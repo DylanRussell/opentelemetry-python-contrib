@@ -1,0 +1,1 @@
+OTLP credential provider for GCP.
