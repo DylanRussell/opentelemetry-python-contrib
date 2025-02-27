@@ -1,0 +1,1 @@
+OTLP exporter customizer for python auto instrumentation.

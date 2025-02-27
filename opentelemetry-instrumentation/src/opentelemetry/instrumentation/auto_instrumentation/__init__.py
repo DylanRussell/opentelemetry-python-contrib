@@ -115,6 +115,7 @@ def run() -> None:
     environ["PYTHONPATH"] = pathsep.join(python_path)
 
     executable = which(args.command)
+    print("running executable")
     execl(executable, executable, *args.command_args)
 
 
@@ -127,6 +128,7 @@ def initialize():
         )
 
     try:
+        print("loading distro")
         distro = _load_distro()
         distro.configure()
         _load_configurators()
