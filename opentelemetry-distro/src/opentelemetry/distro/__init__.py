@@ -21,12 +21,15 @@ from opentelemetry.environment_variables import (
 )
 from opentelemetry.instrumentation.distro import BaseDistro
 from opentelemetry.sdk._configuration import _OTelSDKConfigurator
+from opentelemetry.sdk._config_customizer import _BaseConfiguratorCustomizer
 from opentelemetry.sdk.environment_variables import OTEL_EXPORTER_OTLP_PROTOCOL
 
 
 class OpenTelemetryConfigurator(_OTelSDKConfigurator):
     pass
 
+class OpenTelemetryCustomizer(_BaseConfiguratorCustomizer):
+    pass
 
 class OpenTelemetryDistro(BaseDistro):
     """
