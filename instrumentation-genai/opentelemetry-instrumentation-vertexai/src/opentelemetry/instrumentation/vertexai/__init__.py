@@ -55,6 +55,10 @@ from opentelemetry.instrumentation.vertexai.patch import MethodWrappers
 from opentelemetry.instrumentation.vertexai.utils import is_content_enabled
 from opentelemetry.semconv.schemas import Schemas
 from opentelemetry.trace import get_tracer
+from opentelemetry.instrumentation._semconv import (
+    _OpenTelemetrySemanticConventionStability,
+    _OpenTelemetryStabilitySignalType,
+)
 
 
 def _methods_to_wrap(
@@ -117,6 +121,9 @@ class VertexAIInstrumentor(BaseInstrumentor):
             "",
             schema_url=Schemas.V1_28_0.value,
             event_logger_provider=event_logger_provider,
+        )
+        sem_conv_opt_in_mode = _OpenTelemetrySemanticConventionStability._get_opentelemetry_stability_opt_in_mode(
+            _OpenTelemetryStabilitySignalType.GEN_AI,
         )
 
         method_wrappers = MethodWrappers(

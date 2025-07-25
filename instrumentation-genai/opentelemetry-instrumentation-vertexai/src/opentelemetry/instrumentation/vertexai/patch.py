@@ -22,6 +22,9 @@ from typing import (
     Callable,
     MutableSequence,
 )
+from opentelemetry.instrumentation._semconv import (
+    _StabilityMode,
+)
 
 from opentelemetry._events import EventLogger
 from opentelemetry.instrumentation.vertexai.utils import (
@@ -91,11 +94,12 @@ def _extract_params(
 
 class MethodWrappers:
     def __init__(
-        self, tracer: Tracer, event_logger: EventLogger, capture_content: bool
+        self, tracer: Tracer, event_logger: EventLogger, capture_content: bool, sem_conv_opt_in_mode: _StabilityMode
     ) -> None:
         self.tracer = tracer
         self.event_logger = event_logger
         self.capture_content = capture_content
+        self.sem_conv_opt_in_mode = sem_conv_opt_in_mode
 
     @contextmanager
     def _with_instrumentation(
@@ -146,6 +150,12 @@ class MethodWrappers:
                     self.event_logger.emit(event)
 
             yield handle_response
+
+    def old_style_instrumentation():
+        pass 
+
+    def new_style_instrumentation():
+        pass
 
     def generate_content(
         self,
