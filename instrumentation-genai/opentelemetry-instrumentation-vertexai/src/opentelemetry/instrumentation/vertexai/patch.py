@@ -271,23 +271,20 @@ class MethodWrappers:
                 handle_response(response)
                 return response
         else:
-            capture_content = cast(ContentCapturingMode, self.capture_content)
             params = _extract_params(*args, **kwargs)
             api_endpoint: str = instance.api_endpoint  # type: ignore[reportUnknownMemberType]
+            capture_content = cast(ContentCapturingMode, self.capture_content)
             span_attributes = {
                 **get_genai_request_attributes(True, params),
                 **get_server_attributes(api_endpoint),
             }
-
-            span_name = get_span_name(span_attributes)
             with self.tracer.start_as_current_span(
-                name=span_name,
+                name=get_span_name(span_attributes),
                 kind=SpanKind.CLIENT,
                 attributes=span_attributes,
             ) as span:
-                response = None
                 try:
-                    response = wrapped(*args, **kwargs)
+                    response = await wrapped(*args, **kwargs)
                     if span.is_recording():
                         # When streaming, this is called multiple times so attributes would be
                         # overwritten. In practice, it looks the API only returns the interesting
