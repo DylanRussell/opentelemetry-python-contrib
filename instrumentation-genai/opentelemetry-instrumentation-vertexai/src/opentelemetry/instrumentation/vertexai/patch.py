@@ -134,59 +134,6 @@ class MethodWrappers:
         self.capture_content = capture_content
         self.sem_conv_opt_in_mode = sem_conv_opt_in_mode
 
-    #   Deprecations:
-    #   - `gen_ai.system.message` event - use `gen_ai.system_instructions` or
-    #     `gen_ai.input.messages` attributes instead.
-    #   - `gen_ai.user.message`, `gen_ai.assistant.message`, `gen_ai.tool.message` events
-    #     (use `gen_ai.input.messages` attribute instead)
-    #   - `gen_ai.choice` event (use `gen_ai.output.messages` attribute instead)
-    @contextmanager
-    def _with_new_instrumentation(
-        self,
-        capture_content: ContentCapturingMode,
-        instance: client.PredictionServiceClient
-        | client_v1beta1.PredictionServiceClient,
-        args: Any,
-        kwargs: Any,
-    ):
-        params = _extract_params(*args, **kwargs)
-        api_endpoint: str = instance.api_endpoint  # type: ignore[reportUnknownMemberType]
-        span_attributes = {
-            **get_genai_request_attributes(False, params),
-            **get_server_attributes(api_endpoint),
-        }
-
-        span_name = get_span_name(span_attributes)
-
-        with self.tracer.start_as_current_span(
-            name=span_name,
-            kind=SpanKind.CLIENT,
-            attributes=span_attributes,
-        ) as span:
-
-            def handle_response(
-                response: prediction_service.GenerateContentResponse
-                | prediction_service_v1beta1.GenerateContentResponse,
-            ) -> None:
-                if span.is_recording():
-                    # When streaming, this is called multiple times so attributes would be
-                    # overwritten. In practice, it looks the API only returns the interesting
-                    # attributes on the last streamed response. However, I couldn't find
-                    # documentation for this and setting attributes shouldn't be too expensive.
-                    span.set_attributes(
-                        get_genai_response_attributes(response)
-                    )
-                self.event_logger.emit(
-                    create_operation_details_event(
-                        api_endpoint=api_endpoint,
-                        params=params,
-                        capture_content=capture_content,
-                        response=response,
-                    )
-                )
-
-            yield handle_response
-
     @contextmanager
     def _with_default_instrumentation(
         self,
@@ -263,13 +210,31 @@ class MethodWrappers:
                 return response
         else:
             capture_content = cast(ContentCapturingMode, self.capture_content)
-            with self._with_new_instrumentation(
-                capture_content, instance, args, kwargs
-            ) as handle_response:
+            params = _extract_params(*args, **kwargs)
+            api_endpoint: str = instance.api_endpoint  # type: ignore[reportUnknownMemberType]
+            span_attributes = {
+                **get_genai_request_attributes(True, params),
+                **get_server_attributes(api_endpoint),
+            }
+
+            span_name = get_span_name(span_attributes)
+            with self.tracer.start_as_current_span(
+                name=span_name,
+                kind=SpanKind.CLIENT,
+                attributes=span_attributes,
+            ) as span:
+                response = None
                 try:
                     response = wrapped(*args, **kwargs)
-                except Exception as e:
-                    api_endpoint: str = instance.api_endpoint  # type: ignore[reportUnknownMemberType]
+                    if span.is_recording():
+                        # When streaming, this is called multiple times so attributes would be
+                        # overwritten. In practice, it looks the API only returns the interesting
+                        # attributes on the last streamed response. However, I couldn't find
+                        # documentation for this and setting attributes shouldn't be too expensive.
+                        span.set_attributes(
+                            get_genai_response_attributes(response)
+                        )
+                finally:
                     self.event_logger.emit(
                         create_operation_details_event(
                             params=_extract_params(*args, **kwargs),
@@ -278,8 +243,6 @@ class MethodWrappers:
                             api_endpoint=api_endpoint,
                         )
                     )
-                    raise e
-                handle_response(response)
                 return response
 
     async def agenerate_content(
@@ -309,13 +272,31 @@ class MethodWrappers:
                 return response
         else:
             capture_content = cast(ContentCapturingMode, self.capture_content)
-            with self._with_new_instrumentation(
-                capture_content, instance, args, kwargs
-            ) as handle_response:
+            params = _extract_params(*args, **kwargs)
+            api_endpoint: str = instance.api_endpoint  # type: ignore[reportUnknownMemberType]
+            span_attributes = {
+                **get_genai_request_attributes(True, params),
+                **get_server_attributes(api_endpoint),
+            }
+
+            span_name = get_span_name(span_attributes)
+            with self.tracer.start_as_current_span(
+                name=span_name,
+                kind=SpanKind.CLIENT,
+                attributes=span_attributes,
+            ) as span:
+                response = None
                 try:
-                    response = await wrapped(*args, **kwargs)
-                except Exception as e:
-                    api_endpoint: str = instance.api_endpoint  # type: ignore[reportUnknownMemberType]
+                    response = wrapped(*args, **kwargs)
+                    if span.is_recording():
+                        # When streaming, this is called multiple times so attributes would be
+                        # overwritten. In practice, it looks the API only returns the interesting
+                        # attributes on the last streamed response. However, I couldn't find
+                        # documentation for this and setting attributes shouldn't be too expensive.
+                        span.set_attributes(
+                            get_genai_response_attributes(response)
+                        )
+                finally:
                     self.event_logger.emit(
                         create_operation_details_event(
                             params=_extract_params(*args, **kwargs),
@@ -324,6 +305,4 @@ class MethodWrappers:
                             api_endpoint=api_endpoint,
                         )
                     )
-                    raise e
-                handle_response(response)
                 return response
