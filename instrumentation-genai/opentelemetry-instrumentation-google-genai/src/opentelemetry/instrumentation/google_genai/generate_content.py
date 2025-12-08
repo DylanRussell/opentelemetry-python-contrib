@@ -163,7 +163,7 @@ def _to_dict(value: object):
         return value
     if hasattr(value, "model_dump"):
         try:
-            return value.model_dump()
+            return value.model_dump(exclude_unset=True)
         except TypeError:
             return {"ModelName": str(value)}
 
