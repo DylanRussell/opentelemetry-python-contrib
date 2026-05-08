@@ -42,10 +42,7 @@ from opentelemetry.util.genai.utils import (
 )
 
 # TODO: Migrate to GenAI constants once available in semconv package
-_GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS = (
-    "gen_ai.usage.cache_creation.input_tokens"
-)
-_GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS = "gen_ai.usage.cache_read.input_tokens"
+_GEN_AI_REASONING_OUTPUT_TOKENS = "gen_ai.usage.reasoning.output_tokens"
 
 
 class InferenceInvocation(GenAIInvocation):
@@ -72,6 +69,7 @@ class InferenceInvocation(GenAIInvocation):
         finish_reasons: list[str] | None = None,
         input_tokens: int | None = None,
         output_tokens: int | None = None,
+        thinking_tokens: int | None = None,
         temperature: float | None = None,
         top_p: float | None = None,
         frequency_penalty: float | None = None,
@@ -83,9 +81,13 @@ class InferenceInvocation(GenAIInvocation):
         server_port: int | None = None,
         attributes: dict[str, Any] | None = None,
         metric_attributes: dict[str, Any] | None = None,
+        operation_name: str | None = None,
     ) -> None:
         """Use handler.start_inference(provider) or handler.inference(provider) instead of calling this directly."""
-        _operation_name = GenAI.GenAiOperationNameValues.CHAT.value
+        # This is added for backwards compatibility, new instrumentations should not pass this in.
+        _operation_name = (
+            operation_name or GenAI.GenAiOperationNameValues.CHAT.value
+        )
         super().__init__(
             tracer,
             metrics_recorder,
@@ -115,6 +117,7 @@ class InferenceInvocation(GenAIInvocation):
         self.finish_reasons = finish_reasons
         self.input_tokens = input_tokens
         self.output_tokens = output_tokens
+        self.thinking_tokens = thinking_tokens
         self.temperature = temperature
         self.top_p = top_p
         self.frequency_penalty = frequency_penalty
@@ -178,12 +181,16 @@ class InferenceInvocation(GenAIInvocation):
             (GenAI.GEN_AI_USAGE_INPUT_TOKENS, self.input_tokens),
             (GenAI.GEN_AI_USAGE_OUTPUT_TOKENS, self.output_tokens),
             (
-                _GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS,
+                GenAI.GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS,
                 self.cache_creation_input_tokens,
             ),
             (
-                _GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS,
+                GenAI.GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS,
                 self.cache_read_input_tokens,
+            ),
+            (
+                _GEN_AI_REASONING_OUTPUT_TOKENS,
+                self.thinking_tokens,
             ),
         )
         attrs.update({k: v for k, v in optional_attrs if v is not None})
