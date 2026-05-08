@@ -41,7 +41,7 @@ class InferenceInvocation(GenAIInvocation):
     context manager rather than constructing this directly.
     """
 
-    def __init__(  # pylint: disable=too-many-locals
+    def __init__(
         self,
         tracer: Tracer,
         metrics_recorder: InvocationMetricsRecorder,
@@ -50,26 +50,8 @@ class InferenceInvocation(GenAIInvocation):
         provider: str,
         *,
         request_model: str | None = None,
-        input_messages: list[InputMessage] | None = None,
-        output_messages: list[OutputMessage] | None = None,
-        system_instruction: list[MessagePart] | None = None,
-        response_model_name: str | None = None,
-        response_id: str | None = None,
-        finish_reasons: list[str] | None = None,
-        input_tokens: int | None = None,
-        output_tokens: int | None = None,
-        thinking_tokens: int | None = None,
-        temperature: float | None = None,
-        top_p: float | None = None,
-        frequency_penalty: float | None = None,
-        presence_penalty: float | None = None,
-        max_tokens: int | None = None,
-        stop_sequences: list[str] | None = None,
-        seed: int | None = None,
         server_address: str | None = None,
         server_port: int | None = None,
-        attributes: dict[str, Any] | None = None,
-        metric_attributes: dict[str, Any] | None = None,
         operation_name: str = GenAI.GenAiOperationNameValues.CHAT.value,
     ) -> None:
         """Use handler.start_inference(provider) or handler.inference(provider) instead of calling this directly."""
@@ -86,28 +68,6 @@ class InferenceInvocation(GenAIInvocation):
         )
         self.provider = provider
         self.request_model = request_model
-        self.input_messages: list[InputMessage] = (
-            [] if input_messages is None else input_messages
-        )
-        self.output_messages: list[OutputMessage] = (
-            [] if output_messages is None else output_messages
-        )
-        self.system_instruction: list[MessagePart] = (
-            [] if system_instruction is None else system_instruction
-        )
-        self.response_model_name = response_model_name
-        self.response_id = response_id
-        self.finish_reasons = finish_reasons
-        self.input_tokens = input_tokens
-        self.output_tokens = output_tokens
-        self.thinking_tokens = thinking_tokens
-        self.temperature = temperature
-        self.top_p = top_p
-        self.frequency_penalty = frequency_penalty
-        self.presence_penalty = presence_penalty
-        self.max_tokens = max_tokens
-        self.stop_sequences = stop_sequences
-        self.seed = seed
         self.server_address = server_address
         self.server_port = server_port
 
