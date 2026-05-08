@@ -131,6 +131,12 @@ class InferenceInvocation(GenAIInvocation):
 
     def _get_attributes(self) -> dict[str, Any]:
         attrs = self._get_base_attributes()
+        if self.output_tokens is None and self.thinking_tokens is None:
+            output_tokens = None
+        else:
+            output_tokens = (self.output_tokens or 0) + (
+                self.thinking_tokens or 0
+            )
         optional_attrs = (
             (GenAI.GEN_AI_REQUEST_TEMPERATURE, self.temperature),
             (GenAI.GEN_AI_REQUEST_TOP_P, self.top_p),
@@ -143,10 +149,7 @@ class InferenceInvocation(GenAIInvocation):
             (GenAI.GEN_AI_RESPONSE_MODEL, self.response_model_name),
             (GenAI.GEN_AI_RESPONSE_ID, self.response_id),
             (GenAI.GEN_AI_USAGE_INPUT_TOKENS, self.input_tokens),
-            (
-                GenAI.GEN_AI_USAGE_OUTPUT_TOKENS,
-                (self.output_tokens or 0) + (self.thinking_tokens or 0),
-            ),
+            (GenAI.GEN_AI_USAGE_OUTPUT_TOKENS, output_tokens),
             (
                 GenAI.GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS,
                 self.cache_creation_input_tokens,
