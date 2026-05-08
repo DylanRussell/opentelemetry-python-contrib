@@ -1,5 +1,16 @@
 # Copyright The OpenTelemetry Authors
-# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 # pylint: disable=too-many-lines
 
 import copy
@@ -32,7 +43,6 @@ from google.genai.types import (
 
 from opentelemetry import context as context_api
 from opentelemetry import trace
-from opentelemetry._logs import LogRecord
 from opentelemetry.instrumentation._semconv import (
     _OpenTelemetrySemanticConventionStability,
     _OpenTelemetryStabilitySignalType,
@@ -45,8 +55,8 @@ from opentelemetry.semconv._incubating.attributes import (
 from opentelemetry.semconv.attributes import error_attributes
 from opentelemetry.trace.span import Span
 from opentelemetry.util.genai.completion_hook import CompletionHook
+from opentelemetry.util.genai.handler import TelemetryHandler
 from opentelemetry.util.genai.types import (
-    ContentCapturingMode,
     FunctionToolDefinition,
     GenericToolDefinition,
     InputMessage,
@@ -54,7 +64,6 @@ from opentelemetry.util.genai.types import (
     OutputMessage,
     ToolDefinition,
 )
-from opentelemetry.util.genai.utils import gen_ai_json_dumps
 from opentelemetry.util.types import AttributeValue
 
 from .allowlist_util import AllowList
@@ -692,125 +701,6 @@ class _GenerateContentInstrumentationHelper:
 
         return tool_definitions
 
-    def _maybe_log_completion_details_in_log(
-        self,
-        event: LogRecord,
-        completion_details_attributes: dict[str, AttributeValue],
-        tool_definitions: Optional[list[ToolDefinition]] = None,
-    ):
-        if self._content_recording_enabled in [
-            ContentCapturingMode.EVENT_ONLY,
-            ContentCapturingMode.SPAN_AND_EVENT,
-        ]:
-            event.attributes = {
-                **(event.attributes or {}),
-                **completion_details_attributes,
-            }
-        else:
-            event.attributes = {
-                **(event.attributes or {}),
-                **_tool_def_without_parameters_attr(tool_definitions),
-            }
-
-        self._otel_wrapper.log_completion_details(event=event)
-
-    def _maybe_log_completion_details_in_span(
-        self,
-        span: Span,
-        completion_details_attributes: dict[str, AttributeValue],
-        tool_definitions: Optional[list[ToolDefinition]] = None,
-    ):
-        if self._content_recording_enabled in [
-            ContentCapturingMode.SPAN_ONLY,
-            ContentCapturingMode.SPAN_AND_EVENT,
-        ]:
-            span.set_attributes(
-                {
-                    k: gen_ai_json_dumps(v)
-                    for k, v in completion_details_attributes.items()
-                }
-            )
-            # request attributes were already set on the span..
-        else:
-            span.set_attributes(
-                {
-                    k: gen_ai_json_dumps(v)
-                    for k, v in _tool_def_without_parameters_attr(
-                        tool_definitions
-                    ).items()
-                }
-            )
-
-    def _maybe_log_completion_details(
-        self,
-        extra_attributes: dict[str, AttributeValue],
-        request_attributes: dict[str, AttributeValue],
-        final_attributes: dict[str, AttributeValue],
-        request: Union[ContentListUnion, ContentListUnionDict],
-        candidates: list[Candidate],
-        config: Optional[GenerateContentConfigOrDict] = None,
-        tool_definitions: Optional[list[ToolDefinition]] = None,
-    ):
-        if not self.experimental_sem_convs_enabled:
-            return
-        system_instructions = []
-        if system_content := _config_to_system_instruction(config):
-            system_instructions = to_system_instructions(
-                content=transformers.t_contents(system_content)[0]
-            )
-        input_messages = to_input_messages(
-            contents=transformers.t_contents(request)
-        )
-        output_messages = to_output_messages(candidates=candidates)
-        span = trace.get_current_span()
-        event = LogRecord(
-            event_name="gen_ai.client.inference.operation.details",
-            attributes=extra_attributes
-            | request_attributes
-            | final_attributes,
-        )
-        # New sem conv only gets added here when we've verified that experimental mode is set.
-        span.set_attribute(
-            gen_ai_attributes.GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS,
-            self._cached_tokens,
-        )
-        event.attributes[
-            gen_ai_attributes.GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS
-        ] = self._cached_tokens
-        # TODO: replace these strings with the sem conv constant in `gen_ai_attributes` once it becomes available.
-        span.set_attribute(
-            "gen_ai.usage.reasoning.output_tokens",
-            self._thinking_tokens,
-        )
-        event.attributes["gen_ai.usage.reasoning.output_tokens"] = (
-            self._thinking_tokens
-        )
-        tool_definitions = tool_definitions or []
-        self.completion_hook.on_completion(
-            inputs=input_messages,
-            outputs=output_messages,
-            system_instruction=system_instructions,
-            tool_definitions=tool_definitions,
-            span=span,
-            log_record=event,
-        )
-        completion_details_attributes = _create_completion_details_attributes(
-            input_messages,
-            output_messages,
-            system_instructions,
-            tool_definitions,
-        )
-        self._maybe_log_completion_details_in_log(
-            event=event,
-            completion_details_attributes=completion_details_attributes,
-            tool_definitions=tool_definitions,
-        )
-        self._maybe_log_completion_details_in_span(
-            span=span,
-            completion_details_attributes=completion_details_attributes,
-            tool_definitions=tool_definitions,
-        )
-
     def _maybe_log_system_instruction(
         self, config: Optional[GenerateContentConfigOrDict] = None
     ):
@@ -1002,6 +892,7 @@ def _create_instrumented_generate_content(
     snapshot: _MethodsSnapshot,
     otel_wrapper: OTelWrapper,
     completion_hook: CompletionHook,
+    telemetry_handler: TelemetryHandler,
     generate_content_config_key_allowlist: Optional[AllowList] = None,
 ):
     wrapped_func = snapshot.generate_content
@@ -1015,7 +906,6 @@ def _create_instrumented_generate_content(
         config: Optional[GenerateContentConfigOrDict] = None,
         **kwargs: Any,
     ) -> GenerateContentResponse:
-        candidates = []
         helper = _GenerateContentInstrumentationHelper(
             self,
             otel_wrapper,
@@ -1024,17 +914,33 @@ def _create_instrumented_generate_content(
             generate_content_config_key_allowlist=generate_content_config_key_allowlist,
             is_async=False,
         )
-        request_attributes = _create_request_attributes(
-            config,
-            helper._generate_content_config_key_allowlist,
+        extra_attributes = (
+            _get_extra_generate_content_attributes()
+            | _create_request_attributes(
+                config,
+                helper._generate_content_config_key_allowlist,
+            )
         )
-        with helper.start_span_as_current_span(
-            model, "google.genai.Models.generate_content"
-        ) as span:
-            extra_attributes = _get_extra_generate_content_attributes()
-            span.set_attributes(extra_attributes | request_attributes)
-            if not helper.experimental_sem_convs_enabled:
-                helper.process_request(contents, config, span)
+        if helper.experimental_sem_convs_enabled:
+            invocation = telemetry_handler.start_inference(
+                provider=helper._genai_system,
+                request_model=model,
+                operation_name="generate_content",
+            )
+            invocation.attributes.update(extra_attributes)
+            invocation.tool_definitions = helper._maybe_get_tool_definitions(
+                config
+            )
+
+            if helper._content_recording_enabled:
+                invocation.input_messages = to_input_messages(
+                    contents=transformers.t_contents(contents)
+                )
+                if system_content := _config_to_system_instruction(config):
+                    invocation.system_instruction = to_system_instructions(
+                        content=transformers.t_contents(system_content)[0]
+                    )
+
             try:
                 response = wrapped_func(
                     self,
@@ -1043,34 +949,49 @@ def _create_instrumented_generate_content(
                     config=helper.wrapped_config(config),
                     **kwargs,
                 )
-                if helper.experimental_sem_convs_enabled:
-                    helper._update_response(response)
-                    if response.candidates:
-                        candidates += response.candidates
+                helper._update_response(response)
 
-                else:
-                    helper.process_response(response)
+                invocation.input_tokens = helper._input_tokens
+                invocation.output_tokens = helper._output_tokens
+                invocation.finish_reasons = sorted(helper._finish_reasons_set)
+                invocation.cache_read_input_tokens = helper._cached_tokens
+                invocation.attributes[
+                    "gen_ai.usage.reasoning.output_tokens"
+                ] = helper._thinking_tokens
+
+                if helper._content_recording_enabled and response.candidates:
+                    invocation.output_messages = to_output_messages(
+                        candidates=response.candidates
+                    )
+
+                invocation.stop()
                 return response
             except Exception as error:
-                helper.process_error(error)
+                invocation.fail(error)
                 raise
-            finally:
-                final_attributes = helper.create_final_attributes()
-                span.set_attributes(final_attributes)
-                maybe_tool_definitions = helper._maybe_get_tool_definitions(
-                    config
-                )
-                helper._maybe_log_completion_details(
-                    extra_attributes,
-                    request_attributes,
-                    final_attributes,
-                    contents,
-                    candidates,
-                    config,
-                    maybe_tool_definitions,
-                )
-                helper._record_token_usage_metric()
-                helper._record_duration_metric()
+        else:
+            with helper.start_span_as_current_span(
+                model, "google.genai.Models.generate_content"
+            ) as span:
+                span.set_attributes(extra_attributes)
+                helper.process_request(contents, config, span)
+                try:
+                    response = wrapped_func(
+                        self,
+                        model=model,
+                        contents=contents,
+                        config=helper.wrapped_config(config),
+                        **kwargs,
+                    )
+                    helper.process_response(response)
+                    return response
+                except Exception as error:
+                    helper.process_error(error)
+                    raise
+                finally:
+                    span.set_attributes(helper.create_final_attributes())
+                    helper._record_token_usage_metric()
+                    helper._record_duration_metric()
 
     return instrumented_generate_content
 
@@ -1079,6 +1000,7 @@ def _create_instrumented_generate_content_stream(
     snapshot: _MethodsSnapshot,
     otel_wrapper: OTelWrapper,
     completion_hook: CompletionHook,
+    telemetry_handler: TelemetryHandler,
     generate_content_config_key_allowlist: Optional[AllowList] = None,
 ):
     wrapped_func = snapshot.generate_content_stream
@@ -1092,7 +1014,6 @@ def _create_instrumented_generate_content_stream(
         config: Optional[GenerateContentConfigOrDict] = None,
         **kwargs: Any,
     ) -> Iterator[GenerateContentResponse]:
-        candidates: list[Candidate] = []
         helper = _GenerateContentInstrumentationHelper(
             self,
             otel_wrapper,
@@ -1101,53 +1022,84 @@ def _create_instrumented_generate_content_stream(
             generate_content_config_key_allowlist=generate_content_config_key_allowlist,
             is_async=False,
         )
-        request_attributes = _create_request_attributes(
-            config,
-            helper._generate_content_config_key_allowlist,
+        extra_attributes = (
+            _get_extra_generate_content_attributes()
+            | _create_request_attributes(
+                config,
+                helper._generate_content_config_key_allowlist,
+            )
         )
-        with helper.start_span_as_current_span(
-            model, "google.genai.Models.generate_content_stream"
-        ) as span:
-            extra_attributes = _get_extra_generate_content_attributes()
-            span.set_attributes(extra_attributes | request_attributes)
-            if not helper.experimental_sem_convs_enabled:
-                helper.process_request(contents, config, span)
+        if helper.experimental_sem_convs_enabled:
+            invocation = telemetry_handler.start_inference(
+                provider=helper._genai_system,
+                request_model=model,
+                operation_name="generate_content",
+            )
+            invocation.attributes.update(extra_attributes)
+            tool_defs = helper._maybe_get_tool_definitions(config)
+            invocation.tool_definitions = tool_defs
+
+            if helper._content_recording_enabled:
+                invocation.input_messages = to_input_messages(
+                    contents=transformers.t_contents(contents)
+                )
+                if system_content := _config_to_system_instruction(config):
+                    invocation.system_instruction = to_system_instructions(
+                        content=transformers.t_contents(system_content)[0]
+                    )
+            candidates = []
             try:
-                for response in wrapped_func(
+                for resp in wrapped_func(
                     self,
                     model=model,
                     contents=contents,
                     config=helper.wrapped_config(config),
                     **kwargs,
                 ):
-                    if helper.experimental_sem_convs_enabled:
-                        helper._update_response(response)
-                        if response.candidates:
-                            candidates += response.candidates
-
-                    else:
-                        helper.process_response(response)
-                    yield response
+                    helper._update_response(resp)
+                    if resp.candidates:
+                        candidates += resp.candidates
+                    yield resp
             except Exception as error:
-                helper.process_error(error)
+                invocation.fail(error)
                 raise
             finally:
-                final_attributes = helper.create_final_attributes()
-                span.set_attributes(final_attributes)
-                maybe_tool_definitions = helper._maybe_get_tool_definitions(
-                    config
-                )
-                helper._maybe_log_completion_details(
-                    extra_attributes,
-                    request_attributes,
-                    final_attributes,
-                    contents,
-                    candidates,
-                    config,
-                    maybe_tool_definitions,
-                )
-                helper._record_token_usage_metric()
-                helper._record_duration_metric()
+                invocation.input_tokens = helper._input_tokens
+                invocation.output_tokens = helper._output_tokens
+                invocation.finish_reasons = sorted(helper._finish_reasons_set)
+                invocation.cache_read_input_tokens = helper._cached_tokens
+                invocation.attributes[
+                    "gen_ai.usage.reasoning.output_tokens"
+                ] = helper._thinking_tokens
+
+                if helper._content_recording_enabled and candidates:
+                    invocation.output_messages = to_output_messages(
+                        candidates=candidates
+                    )
+                invocation.stop()
+        else:
+            with helper.start_span_as_current_span(
+                model, "google.genai.Models.generate_content_stream"
+            ) as span:
+                span.set_attributes(extra_attributes)
+                helper.process_request(contents, config, span)
+                try:
+                    for response in wrapped_func(
+                        self,
+                        model=model,
+                        contents=contents,
+                        config=helper.wrapped_config(config),
+                        **kwargs,
+                    ):
+                        helper.process_response(response)
+                        yield response
+                except Exception as error:
+                    helper.process_error(error)
+                    raise
+                finally:
+                    span.set_attributes(helper.create_final_attributes())
+                    helper._record_token_usage_metric()
+                    helper._record_duration_metric()
 
     return instrumented_generate_content_stream
 
@@ -1156,6 +1108,7 @@ def _create_instrumented_async_generate_content(
     snapshot: _MethodsSnapshot,
     otel_wrapper: OTelWrapper,
     completion_hook: CompletionHook,
+    telemetry_handler: TelemetryHandler,
     generate_content_config_key_allowlist: Optional[AllowList] = None,
 ):
     wrapped_func = snapshot.async_generate_content
@@ -1177,18 +1130,33 @@ def _create_instrumented_async_generate_content(
             generate_content_config_key_allowlist=generate_content_config_key_allowlist,
             is_async=True,
         )
-        request_attributes = _create_request_attributes(
-            config,
-            helper._generate_content_config_key_allowlist,
+        extra_attributes = (
+            _get_extra_generate_content_attributes()
+            | _create_request_attributes(
+                config,
+                helper._generate_content_config_key_allowlist,
+            )
         )
-        candidates: list[Candidate] = []
-        with helper.start_span_as_current_span(
-            model, "google.genai.AsyncModels.generate_content"
-        ) as span:
-            extra_attributes = _get_extra_generate_content_attributes()
-            span.set_attributes(extra_attributes | request_attributes)
-            if not helper.experimental_sem_convs_enabled:
-                helper.process_request(contents, config, span)
+        if helper.experimental_sem_convs_enabled:
+            invocation = telemetry_handler.start_inference(
+                provider=helper._genai_system,
+                request_model=model,
+                operation_name="generate_content",
+            )
+            invocation.attributes.update(extra_attributes)
+            invocation.tool_definitions = (
+                await helper._maybe_get_tool_definitions_async(config)
+            )
+
+            if helper._content_recording_enabled:
+                invocation.input_messages = to_input_messages(
+                    contents=transformers.t_contents(contents)
+                )
+                if system_content := _config_to_system_instruction(config):
+                    invocation.system_instruction = to_system_instructions(
+                        content=transformers.t_contents(system_content)[0]
+                    )
+
             try:
                 response = await wrapped_func(
                     self,
@@ -1197,33 +1165,49 @@ def _create_instrumented_async_generate_content(
                     config=helper.wrapped_config(config),
                     **kwargs,
                 )
-                if helper.experimental_sem_convs_enabled:
-                    helper._update_response(response)
-                    if response.candidates:
-                        candidates += response.candidates
-                else:
-                    helper.process_response(response)
+                helper._update_response(response)
+
+                invocation.input_tokens = helper._input_tokens
+                invocation.output_tokens = helper._output_tokens
+                invocation.finish_reasons = sorted(helper._finish_reasons_set)
+                invocation.cache_read_input_tokens = helper._cached_tokens
+                invocation.attributes[
+                    "gen_ai.usage.reasoning.output_tokens"
+                ] = helper._thinking_tokens
+
+                if helper._content_recording_enabled and response.candidates:
+                    invocation.output_messages = to_output_messages(
+                        candidates=response.candidates
+                    )
+
+                invocation.stop()
                 return response
             except Exception as error:
-                helper.process_error(error)
+                invocation.fail(error)
                 raise
-            finally:
-                final_attributes = helper.create_final_attributes()
-                span.set_attributes(final_attributes)
-                maybe_tool_definitions = (
-                    await helper._maybe_get_tool_definitions_async(config)
-                )
-                helper._maybe_log_completion_details(
-                    extra_attributes,
-                    request_attributes,
-                    final_attributes,
-                    contents,
-                    candidates,
-                    config,
-                    maybe_tool_definitions,
-                )
-                helper._record_token_usage_metric()
-                helper._record_duration_metric()
+        else:
+            with helper.start_span_as_current_span(
+                model, "google.genai.AsyncModels.generate_content"
+            ) as span:
+                span.set_attributes(extra_attributes)
+                helper.process_request(contents, config, span)
+                try:
+                    response = await wrapped_func(
+                        self,
+                        model=model,
+                        contents=contents,
+                        config=helper.wrapped_config(config),
+                        **kwargs,
+                    )
+                    helper.process_response(response)
+                    return response
+                except Exception as error:
+                    helper.process_error(error)
+                    raise
+                finally:
+                    span.set_attributes(helper.create_final_attributes())
+                    helper._record_token_usage_metric()
+                    helper._record_duration_metric()
 
     return instrumented_generate_content
 
@@ -1233,6 +1217,7 @@ def _create_instrumented_async_generate_content_stream(  # type: ignore
     snapshot: _MethodsSnapshot,
     otel_wrapper: OTelWrapper,
     completion_hook: CompletionHook,
+    telemetry_handler: TelemetryHandler,
     generate_content_config_key_allowlist: Optional[AllowList] = None,
 ):
     wrapped_func = snapshot.async_generate_content_stream
@@ -1254,19 +1239,32 @@ def _create_instrumented_async_generate_content_stream(  # type: ignore
             generate_content_config_key_allowlist=generate_content_config_key_allowlist,
             is_async=True,
         )
-        request_attributes = _create_request_attributes(
-            config,
-            helper._generate_content_config_key_allowlist,
+        extra_attributes = (
+            _get_extra_generate_content_attributes()
+            | _create_request_attributes(
+                config,
+                helper._generate_content_config_key_allowlist,
+            )
         )
-        with helper.start_span_as_current_span(
-            model,
-            "google.genai.AsyncModels.generate_content_stream",
-            end_on_exit=False,
-        ) as span:
-            extra_attributes = _get_extra_generate_content_attributes()
-            span.set_attributes(extra_attributes | request_attributes)
-            if not helper.experimental_sem_convs_enabled:
-                helper.process_request(contents, config, span)
+        if helper.experimental_sem_convs_enabled:
+            invocation = telemetry_handler.start_inference(
+                provider=helper._genai_system,
+                request_model=model,
+                operation_name="generate_content",
+            )
+            invocation.attributes.update(extra_attributes)
+            invocation.tool_definitions = (
+                await helper._maybe_get_tool_definitions_async(config)
+            )
+            if helper._content_recording_enabled:
+                invocation.input_messages = to_input_messages(
+                    contents=transformers.t_contents(contents)
+                )
+                if system_content := _config_to_system_instruction(config):
+                    invocation.system_instruction = to_system_instructions(
+                        content=transformers.t_contents(system_content)[0]
+                    )
+
             try:
                 response_async_generator = await wrapped_func(
                     self,
@@ -1275,64 +1273,84 @@ def _create_instrumented_async_generate_content_stream(  # type: ignore
                     config=helper.wrapped_config(config),
                     **kwargs,
                 )
-            except Exception as error:  # pylint: disable=broad-exception-caught
-                helper.process_error(error)
-                helper._record_token_usage_metric()
-                final_attributes = helper.create_final_attributes()
-                span.set_attributes(final_attributes)
-                maybe_tool_definitions = (
-                    await helper._maybe_get_tool_definitions_async(config)
-                )
-                helper._maybe_log_completion_details(
-                    extra_attributes,
-                    request_attributes,
-                    final_attributes,
-                    contents,
-                    [],
-                    config,
-                    maybe_tool_definitions,
-                )
-                helper._record_duration_metric()
-                with trace.use_span(span, end_on_exit=True):
-                    raise
 
-            async def _response_async_generator_wrapper():
-                candidates: list[Candidate] = []
-                with trace.use_span(span, end_on_exit=True):
+                async def _response_async_generator_wrapper():
+                    candidates = []
                     try:
-                        async for response in response_async_generator:
-                            if helper.experimental_sem_convs_enabled:
-                                helper._update_response(response)
-                                if response.candidates:
-                                    candidates += response.candidates
-
-                            else:
-                                helper.process_response(response)
-                            yield response
-                    except Exception as error:
-                        helper.process_error(error)
+                        async for resp in response_async_generator:
+                            helper._update_response(resp)
+                            if resp.candidates:
+                                candidates += resp.candidates
+                            yield resp
+                    except Exception as e:
+                        invocation.fail(e)
                         raise
                     finally:
-                        final_attributes = helper.create_final_attributes()
-                        span.set_attributes(final_attributes)
-                        maybe_tool_definitions = (
-                            await helper._maybe_get_tool_definitions_async(
-                                config
-                            )
+                        invocation.input_tokens = helper._input_tokens
+                        invocation.output_tokens = helper._output_tokens
+                        invocation.finish_reasons = sorted(
+                            helper._finish_reasons_set
                         )
-                        helper._maybe_log_completion_details(
-                            extra_attributes,
-                            request_attributes,
-                            final_attributes,
-                            contents,
-                            candidates,
-                            config,
-                            maybe_tool_definitions,
+                        invocation.cache_read_input_tokens = (
+                            helper._cached_tokens
                         )
-                        helper._record_token_usage_metric()
-                        helper._record_duration_metric()
+                        invocation.attributes[
+                            "gen_ai.usage.reasoning.output_tokens"
+                        ] = helper._thinking_tokens
 
-            return _response_async_generator_wrapper()
+                        if helper._content_recording_enabled and candidates:
+                            invocation.output_messages = to_output_messages(
+                                candidates=candidates
+                            )
+
+                        invocation.stop()
+
+                return _response_async_generator_wrapper()
+
+            except Exception as error:
+                invocation.fail(error)
+                raise
+        else:
+            with helper.start_span_as_current_span(
+                model,
+                "google.genai.AsyncModels.generate_content_stream",
+                end_on_exit=False,
+            ) as span:
+                span.set_attributes(extra_attributes)
+                helper.process_request(contents, config, span)
+                try:
+                    response_async_generator = await wrapped_func(
+                        self,
+                        model=model,
+                        contents=contents,
+                        config=helper.wrapped_config(config),
+                        **kwargs,
+                    )
+                except Exception as error:  # pylint: disable=broad-exception-caught
+                    helper.process_error(error)
+                    helper._record_token_usage_metric()
+                    span.set_attributes(helper.create_final_attributes())
+                    helper._record_duration_metric()
+                    with trace.use_span(span, end_on_exit=True):
+                        raise
+
+                async def _response_async_generator_wrapper():
+                    with trace.use_span(span, end_on_exit=True):
+                        try:
+                            async for response in response_async_generator:
+                                helper.process_response(response)
+                                yield response
+                        except Exception as error:
+                            helper.process_error(error)
+                            raise
+                        finally:
+                            span.set_attributes(
+                                helper.create_final_attributes()
+                            )
+                            helper._record_token_usage_metric()
+                            helper._record_duration_metric()
+
+                return _response_async_generator_wrapper()
 
     return instrumented_generate_content_stream
 
@@ -1345,6 +1363,7 @@ def uninstrument_generate_content(snapshot: object):
 def instrument_generate_content(
     otel_wrapper: OTelWrapper,
     completion_hook: CompletionHook,
+    telemetry_handler: TelemetryHandler,
     generate_content_config_key_allowlist: Optional[AllowList] = None,
 ) -> object:
     opt_in_mode = _OpenTelemetrySemanticConventionStability._get_opentelemetry_stability_opt_in_mode(
@@ -1355,29 +1374,35 @@ def instrument_generate_content(
         _StabilityMode.DEFAULT,
     ):
         raise ValueError(f"Sem Conv opt in mode {opt_in_mode} not supported.")
+    if opt_in_mode == _StabilityMode.GEN_AI_LATEST_EXPERIMENTAL:
+        os.environ["OTEL_INSTRUMENTATION_GENAI_EMIT_EVENT"] = "true"
     snapshot = _MethodsSnapshot()
     Models.generate_content = _create_instrumented_generate_content(
         snapshot,
         otel_wrapper,
         completion_hook,
+        telemetry_handler,
         generate_content_config_key_allowlist=generate_content_config_key_allowlist,
     )
     Models.generate_content_stream = _create_instrumented_generate_content_stream(
         snapshot,
         otel_wrapper,
         completion_hook,
+        telemetry_handler,
         generate_content_config_key_allowlist=generate_content_config_key_allowlist,
     )
     AsyncModels.generate_content = _create_instrumented_async_generate_content(
         snapshot,
         otel_wrapper,
         completion_hook,
+        telemetry_handler,
         generate_content_config_key_allowlist=generate_content_config_key_allowlist,
     )
     AsyncModels.generate_content_stream = _create_instrumented_async_generate_content_stream(
         snapshot,
         otel_wrapper,
         completion_hook,
+        telemetry_handler,
         generate_content_config_key_allowlist=generate_content_config_key_allowlist,
     )
     return snapshot
