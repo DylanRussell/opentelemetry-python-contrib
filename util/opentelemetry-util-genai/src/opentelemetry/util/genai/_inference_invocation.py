@@ -41,7 +41,7 @@ class InferenceInvocation(GenAIInvocation):
     context manager rather than constructing this directly.
     """
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-locals
         self,
         tracer: Tracer,
         metrics_recorder: InvocationMetricsRecorder,
