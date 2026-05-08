@@ -94,14 +94,10 @@ def _create_function_span_name(wrapped_function):
 def _create_function_span_attributes(
     wrapped_function, function_args, function_kwargs, extra_span_attributes
 ):
-    """Creates the attributes for a tool call function span."""
+    """Creates custom attributes for a tool call function span."""
     result = {}
     if extra_span_attributes:
         result.update(extra_span_attributes)
-    result["gen_ai.operation.name"] = "execute_tool"
-    result["gen_ai.tool.name"] = wrapped_function.__name__
-    if wrapped_function.__doc__:
-        result["gen_ai.tool.description"] = wrapped_function.__doc__
     result[code_attributes.CODE_FUNCTION_NAME] = wrapped_function.__name__
     result["code.module"] = wrapped_function.__module__
     result["code.args.positional.count"] = len(function_args)
@@ -121,13 +117,12 @@ def _record_function_call_argument(
 
 
 def _record_function_call_arguments(
-    otel_wrapper, wrapped_function, function_args, function_kwargs
+    wrapped_function, function_args, function_kwargs
 ):
     """Records the details about a function invocation as span attributes."""
     include_values = _is_capture_content_enabled()
     span = trace.get_current_span()
-    signature = inspect.signature(wrapped_function)
-    params = list(signature.parameters.values())
+    params = list(inspect.signature(wrapped_function).parameters.values())
     for index, entry in enumerate(function_args):
         param_name = f"args[{index}]"
         if index < len(params):
@@ -137,7 +132,7 @@ def _record_function_call_arguments(
         _record_function_call_argument(span, key, value, include_values)
 
 
-def _record_function_call_result(otel_wrapper, wrapped_function, result):
+def _record_function_call_result(wrapped_function, result):
     """Records the details about a function result as span attributes."""
     include_values = _is_capture_content_enabled()
     span = trace.get_current_span()
@@ -151,23 +146,23 @@ def _record_function_call_result(otel_wrapper, wrapped_function, result):
 def _wrap_sync_tool_function(
     tool_function: ToolFunction,
     otel_wrapper: OTelWrapper,
+    telemetry_handler: TelemetryHandler,
     extra_span_attributes: Optional[dict[str, str]] = None,
     **unused_kwargs,
 ):
     @functools.wraps(tool_function)
     def wrapped_function(*args, **kwargs):
-        span_name = _create_function_span_name(tool_function)
         attributes = _create_function_span_attributes(
             tool_function, args, kwargs, extra_span_attributes
         )
-        with otel_wrapper.start_as_current_span(
-            span_name, attributes=attributes
-        ):
+        tool_invocation = telemetry_handler.start_tool(tool_function.__name__, tool_description=tool_function.__doc__)
+
+        with telemetry_handler.
             _record_function_call_arguments(
-                otel_wrapper, tool_function, args, kwargs
+                tool_function, args, kwargs
             )
             result = tool_function(*args, **kwargs)
-            _record_function_call_result(otel_wrapper, tool_function, result)
+            _record_function_call_result(tool_function, result)
             return result
 
     return wrapped_function
@@ -189,10 +184,10 @@ def _wrap_async_tool_function(
             span_name, attributes=attributes
         ):
             _record_function_call_arguments(
-                otel_wrapper, tool_function, args, kwargs
+                tool_function, args, kwargs
             )
             result = await tool_function(*args, **kwargs)
-            _record_function_call_result(otel_wrapper, tool_function, result)
+            _record_function_call_result(tool_function, result)
             return result
 
     return wrapped_function
