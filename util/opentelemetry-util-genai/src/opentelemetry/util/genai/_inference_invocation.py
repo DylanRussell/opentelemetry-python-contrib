@@ -52,8 +52,11 @@ class InferenceInvocation(GenAIInvocation):
         request_model: str | None = None,
         server_address: str | None = None,
         server_port: int | None = None,
-        operation_name: str = GenAI.GenAiOperationNameValues.CHAT.value,
+        operation_name: str | None = None,
     ) -> None:
+        operation_name = (
+            operation_name or GenAI.GenAiOperationNameValues.CHAT.value
+        )
         """Use handler.start_inference(provider) or handler.inference(provider) instead of calling this directly."""
         super().__init__(
             tracer,
@@ -78,7 +81,9 @@ class InferenceInvocation(GenAIInvocation):
         self.response_id: str | None = None
         self.finish_reasons: list[str] | None = None
         self.input_tokens: int | None = None
+        # Output tokens will ultimately be the sum of normal output tokens and thinking tokens.
         self.output_tokens: int | None = None
+        self.thinking_tokens: int | None = None
         self.temperature: float | None = None
         self.top_p: float | None = None
         self.frequency_penalty: float | None = None
@@ -138,7 +143,10 @@ class InferenceInvocation(GenAIInvocation):
             (GenAI.GEN_AI_RESPONSE_MODEL, self.response_model_name),
             (GenAI.GEN_AI_RESPONSE_ID, self.response_id),
             (GenAI.GEN_AI_USAGE_INPUT_TOKENS, self.input_tokens),
-            (GenAI.GEN_AI_USAGE_OUTPUT_TOKENS, self.output_tokens),
+            (
+                GenAI.GEN_AI_USAGE_OUTPUT_TOKENS,
+                (self.output_tokens or 0) + (self.thinking_tokens or 0),
+            ),
             (
                 GenAI.GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS,
                 self.cache_creation_input_tokens,
