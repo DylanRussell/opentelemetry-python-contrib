@@ -147,8 +147,6 @@ class TelemetryHandler:
 
         Set remaining attributes (input_messages, temperature, etc.) on the
         returned invocation, then call invocation.stop() or invocation.fail().
-        Operation name should generally not be passed in, this argument is to
-        allow some instrumentations to preserve backward compatibility.
         """
         return InferenceInvocation(
             self._tracer,

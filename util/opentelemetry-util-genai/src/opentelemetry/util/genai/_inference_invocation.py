@@ -70,22 +70,18 @@ class InferenceInvocation(GenAIInvocation):
         server_port: int | None = None,
         attributes: dict[str, Any] | None = None,
         metric_attributes: dict[str, Any] | None = None,
-        operation_name: str | None = None,
+        operation_name: str = GenAI.GenAiOperationNameValues.CHAT.value,
     ) -> None:
         """Use handler.start_inference(provider) or handler.inference(provider) instead of calling this directly."""
-        # This is added for backwards compatibility, new instrumentations should not pass this in.
-        _operation_name = (
-            operation_name or GenAI.GenAiOperationNameValues.CHAT.value
-        )
         super().__init__(
             tracer,
             metrics_recorder,
             logger,
             completion_hook,
-            operation_name=_operation_name,
-            span_name=f"{_operation_name} {request_model}"
+            operation_name=operation_name,
+            span_name=f"{operation_name} {request_model}"
             if request_model
-            else _operation_name,
+            else operation_name,
             span_kind=SpanKind.CLIENT,
         )
         self.provider = provider
