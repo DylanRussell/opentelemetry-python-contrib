@@ -344,6 +344,7 @@ class TelemetryHandler:
         provider: str,
         *,
         request_model: str | None = None,
+        agent_name: str | None = None,
     ) -> AgentInvocation:
         """Create and start a local agent invocation (INTERNAL span kind).
 
@@ -360,6 +361,7 @@ class TelemetryHandler:
             provider,
             span_kind=SpanKind.INTERNAL,
             request_model=request_model,
+            agent_name=agent_name,
         )
 
     def start_invoke_remote_agent(
@@ -369,6 +371,7 @@ class TelemetryHandler:
         request_model: str | None = None,
         server_address: str | None = None,
         server_port: int | None = None,
+        agent_name: str | None = None,
     ) -> AgentInvocation:
         """Create and start a remote agent invocation (CLIENT span kind).
 
@@ -385,6 +388,7 @@ class TelemetryHandler:
             provider,
             span_kind=SpanKind.CLIENT,
             request_model=request_model,
+            agent_name=agent_name,
             server_address=server_address,
             server_port=server_port,
         )
@@ -394,6 +398,7 @@ class TelemetryHandler:
         provider: str,
         *,
         request_model: str | None = None,
+        agent_name: str | None = None,
     ) -> AbstractContextManager[AgentInvocation]:
         """Context manager for local agent invocations (INTERNAL span kind).
 
@@ -408,6 +413,7 @@ class TelemetryHandler:
         return self.start_invoke_local_agent(
             provider,
             request_model=request_model,
+            agent_name=agent_name,
         )._managed()
 
     def invoke_remote_agent(
@@ -417,6 +423,7 @@ class TelemetryHandler:
         request_model: str | None = None,
         server_address: str | None = None,
         server_port: int | None = None,
+        agent_name: str | None = None,
     ) -> AbstractContextManager[AgentInvocation]:
         """Context manager for remote agent invocations (CLIENT span kind).
 
@@ -431,6 +438,7 @@ class TelemetryHandler:
         return self.start_invoke_remote_agent(
             provider,
             request_model=request_model,
+            agent_name=agent_name,
             server_address=server_address,
             server_port=server_port,
         )._managed()
