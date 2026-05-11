@@ -57,6 +57,7 @@ from opentelemetry.trace.span import Span
 from opentelemetry.util.genai.completion_hook import CompletionHook
 from opentelemetry.util.genai.handler import TelemetryHandler
 from opentelemetry.util.genai.types import (
+    ContentCapturingMode,
     FunctionToolDefinition,
     GenericToolDefinition,
     InputMessage,
@@ -76,7 +77,7 @@ from .message import (
     to_system_instructions,
 )
 from .otel_wrapper import OTelWrapper
-from .tool_call_wrapper import wrapped as wrapped_tool
+from .tool_call_wrapper import wrapped_tool
 
 _is_mcp_imported = False
 if typing.TYPE_CHECKING:
@@ -432,15 +433,16 @@ def _coerce_config_to_object(
 
 
 def _wrapped_config_with_tools(
-    otel_wrapper: OTelWrapper,
+    telemetry_handler: TelemetryHandler,
+    capture_content_on_span: bool,
     config: GenerateContentConfig,
-    **kwargs,
 ):
     if not config.tools:
         return config
     result = copy.copy(config)
     result.tools = [
-        wrapped_tool(tool, otel_wrapper, **kwargs) for tool in config.tools
+        wrapped_tool(tool, telemetry_handler, capture_content_on_span)
+        for tool in config.tools
     ]
     return result
 
@@ -509,12 +511,14 @@ class _GenerateContentInstrumentationHelper:
         self,
         models_object: Union[Models, AsyncModels],
         otel_wrapper: OTelWrapper,
+        telemetry_handler: TelemetryHandler,
         model: str,
         completion_hook: CompletionHook,
         generate_content_config_key_allowlist: Optional[AllowList] = None,
         is_async: bool = False,
     ):
         self._start_time = time.time_ns()
+        self._telemetry_handler = telemetry_handler
         self._otel_wrapper = otel_wrapper
         self._genai_system = _determine_genai_system(models_object)
         self._genai_request_model = model
@@ -539,6 +543,13 @@ class _GenerateContentInstrumentationHelper:
         self._content_recording_enabled = is_content_recording_enabled(
             self.experimental_sem_convs_enabled
         )
+        if self.experimental_sem_convs_enabled:
+            self.capture_content_on_span = self._content_recording_enabled in [
+                ContentCapturingMode.SPAN_ONLY,
+                ContentCapturingMode.SPAN_AND_EVENT,
+            ]
+        else:
+            self.capture_content_on_span = self._content_recording_enabled
         self._response_index = 0
         self._candidate_index = 0
         self._generate_content_config_key_allowlist = (
@@ -552,9 +563,9 @@ class _GenerateContentInstrumentationHelper:
         if config is None:
             return None
         return _wrapped_config_with_tools(
-            self._otel_wrapper,
+            self._telemetry_handler,
+            self.capture_content_on_span,
             _coerce_config_to_object(config),
-            extra_span_attributes={"gen_ai.system": self._genai_system},
         )
 
     def start_span_as_current_span(
@@ -909,6 +920,7 @@ def _create_instrumented_generate_content(
         helper = _GenerateContentInstrumentationHelper(
             self,
             otel_wrapper,
+            telemetry_handler,
             model,
             completion_hook,
             generate_content_config_key_allowlist=generate_content_config_key_allowlist,
@@ -1017,6 +1029,7 @@ def _create_instrumented_generate_content_stream(
         helper = _GenerateContentInstrumentationHelper(
             self,
             otel_wrapper,
+            telemetry_handler,
             model,
             completion_hook,
             generate_content_config_key_allowlist=generate_content_config_key_allowlist,
@@ -1125,6 +1138,7 @@ def _create_instrumented_async_generate_content(
         helper = _GenerateContentInstrumentationHelper(
             self,
             otel_wrapper,
+            telemetry_handler,
             model,
             completion_hook,
             generate_content_config_key_allowlist=generate_content_config_key_allowlist,
@@ -1234,6 +1248,7 @@ def _create_instrumented_async_generate_content_stream(  # type: ignore
         helper = _GenerateContentInstrumentationHelper(
             self,
             otel_wrapper,
+            telemetry_handler,
             model,
             completion_hook,
             generate_content_config_key_allowlist=generate_content_config_key_allowlist,
@@ -1256,14 +1271,13 @@ def _create_instrumented_async_generate_content_stream(  # type: ignore
             invocation.tool_definitions = (
                 await helper._maybe_get_tool_definitions_async(config)
             )
-            if helper._content_recording_enabled:
-                invocation.input_messages = to_input_messages(
-                    contents=transformers.t_contents(contents)
+            invocation.input_messages = to_input_messages(
+                contents=transformers.t_contents(contents)
+            )
+            if system_content := _config_to_system_instruction(config):
+                invocation.system_instruction = to_system_instructions(
+                    content=transformers.t_contents(system_content)[0]
                 )
-                if system_content := _config_to_system_instruction(config):
-                    invocation.system_instruction = to_system_instructions(
-                        content=transformers.t_contents(system_content)[0]
-                    )
 
             try:
                 response_async_generator = await wrapped_func(
@@ -1298,7 +1312,7 @@ def _create_instrumented_async_generate_content_stream(  # type: ignore
                             "gen_ai.usage.reasoning.output_tokens"
                         ] = helper._thinking_tokens
 
-                        if helper._content_recording_enabled and candidates:
+                        if candidates:
                             invocation.output_messages = to_output_messages(
                                 candidates=candidates
                             )
