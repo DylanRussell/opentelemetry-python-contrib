@@ -60,7 +60,6 @@ class GoogleGenAiSdkInstrumentor(BaseInstrumentor):
         )
         self._generate_content_snapshot = instrument_generate_content(
             otel_wrapper,
-            completion_hook,
             telemetry_handler,
             generate_content_config_key_allowlist=self._generate_content_config_key_allowlist,
         )

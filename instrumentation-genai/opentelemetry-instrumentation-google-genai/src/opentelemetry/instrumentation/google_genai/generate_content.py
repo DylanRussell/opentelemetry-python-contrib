@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import copy
-import dataclasses
 import functools
 import json
 import logging
@@ -42,7 +41,6 @@ from opentelemetry.semconv._incubating.attributes import (
 )
 from opentelemetry.semconv.attributes import error_attributes
 from opentelemetry.trace.span import Span
-from opentelemetry.util.genai.completion_hook import CompletionHook
 from opentelemetry.util.genai.handler import TelemetryHandler
 from opentelemetry.util.genai.invocation import (
     InferenceInvocation,
@@ -51,9 +49,6 @@ from opentelemetry.util.genai.types import (
     ContentCapturingMode,
     FunctionToolDefinition,
     GenericToolDefinition,
-    InputMessage,
-    MessagePart,
-    OutputMessage,
     ToolDefinition,
 )
 from opentelemetry.util.types import AttributeValue
@@ -328,26 +323,6 @@ async def _to_tool_definition_async(
     return _to_tool_definition_common(tool)
 
 
-def _tool_def_without_parameters_attr(
-    tool_def: list[ToolDefinition],
-) -> dict[str, AttributeValue]:
-    if tool_def == []:
-        return {}
-
-    return {
-        GEN_AI_TOOL_DEFINITIONS: [
-            dataclasses.asdict(
-                FunctionToolDefinition(
-                    name=td.name, description=td.description, parameters=None
-                )
-                if isinstance(td, FunctionToolDefinition)
-                else td
-            )
-            for td in tool_def
-        ]
-    }
-
-
 def _create_request_attributes(
     config: Optional[GenerateContentConfigOrDict],
     allow_list: AllowList,
@@ -460,36 +435,6 @@ def _config_to_tools(
     return config.tools
 
 
-def _create_completion_details_attributes(
-    input_messages: list[InputMessage],
-    output_messages: list[OutputMessage],
-    system_instructions: list[MessagePart],
-    tool_definitions: list[ToolDefinition],
-    as_str: bool = False,
-) -> dict[str, AttributeValue]:
-    attributes: dict[str, AttributeValue] = {
-        gen_ai_attributes.GEN_AI_INPUT_MESSAGES: [
-            dataclasses.asdict(input_message)
-            for input_message in input_messages
-        ],
-        gen_ai_attributes.GEN_AI_OUTPUT_MESSAGES: [
-            dataclasses.asdict(output_message)
-            for output_message in output_messages
-        ],
-    }
-    if system_instructions:
-        attributes[gen_ai_attributes.GEN_AI_SYSTEM_INSTRUCTIONS] = [
-            dataclasses.asdict(sys_instr) for sys_instr in system_instructions
-        ]
-
-    if tool_definitions:
-        attributes[GEN_AI_TOOL_DEFINITIONS] = [
-            dataclasses.asdict(tool_def) for tool_def in tool_definitions
-        ]
-
-    return attributes
-
-
 def _get_extra_generate_content_attributes() -> dict[str, AttributeValue]:
     attrs = context_api.get_value(
         GENERATE_CONTENT_EXTRA_ATTRIBUTES_CONTEXT_KEY
@@ -504,7 +449,6 @@ class _GenerateContentInstrumentationHelper:
         otel_wrapper: OTelWrapper,
         telemetry_handler: TelemetryHandler,
         model: str,
-        completion_hook: CompletionHook,
         generate_content_config_key_allowlist: Optional[AllowList] = None,
         is_async: bool = False,
     ):
@@ -513,7 +457,6 @@ class _GenerateContentInstrumentationHelper:
         self._otel_wrapper = otel_wrapper
         self._genai_system = _determine_genai_system(models_object)
         self._genai_request_model = model
-        self.completion_hook = completion_hook
         self._finish_reasons_set = set()
         self._error_type = None
         self._input_tokens = 0
@@ -910,7 +853,6 @@ class _GenerateContentInstrumentationHelper:
 def _create_instrumented_generate_content(
     snapshot: _MethodsSnapshot,
     otel_wrapper: OTelWrapper,
-    completion_hook: CompletionHook,
     telemetry_handler: TelemetryHandler,
     generate_content_config_key_allowlist: Optional[AllowList] = None,
 ):
@@ -930,7 +872,6 @@ def _create_instrumented_generate_content(
             otel_wrapper,
             telemetry_handler,
             model,
-            completion_hook,
             generate_content_config_key_allowlist=generate_content_config_key_allowlist,
             is_async=False,
         )
@@ -1003,7 +944,6 @@ def _create_instrumented_generate_content(
 def _create_instrumented_generate_content_stream(
     snapshot: _MethodsSnapshot,
     otel_wrapper: OTelWrapper,
-    completion_hook: CompletionHook,
     telemetry_handler: TelemetryHandler,
     generate_content_config_key_allowlist: Optional[AllowList] = None,
 ):
@@ -1023,7 +963,6 @@ def _create_instrumented_generate_content_stream(
             otel_wrapper,
             telemetry_handler,
             model,
-            completion_hook,
             generate_content_config_key_allowlist=generate_content_config_key_allowlist,
             is_async=False,
         )
@@ -1097,7 +1036,6 @@ def _create_instrumented_generate_content_stream(
 def _create_instrumented_async_generate_content(
     snapshot: _MethodsSnapshot,
     otel_wrapper: OTelWrapper,
-    completion_hook: CompletionHook,
     telemetry_handler: TelemetryHandler,
     generate_content_config_key_allowlist: Optional[AllowList] = None,
 ):
@@ -1117,7 +1055,6 @@ def _create_instrumented_async_generate_content(
             otel_wrapper,
             telemetry_handler,
             model,
-            completion_hook,
             generate_content_config_key_allowlist=generate_content_config_key_allowlist,
             is_async=True,
         )
@@ -1193,7 +1130,6 @@ def _create_instrumented_async_generate_content(
 def _create_instrumented_async_generate_content_stream(  # type: ignore
     snapshot: _MethodsSnapshot,
     otel_wrapper: OTelWrapper,
-    completion_hook: CompletionHook,
     telemetry_handler: TelemetryHandler,
     generate_content_config_key_allowlist: Optional[AllowList] = None,
 ):
@@ -1213,7 +1149,6 @@ def _create_instrumented_async_generate_content_stream(  # type: ignore
             otel_wrapper,
             telemetry_handler,
             model,
-            completion_hook,
             generate_content_config_key_allowlist=generate_content_config_key_allowlist,
             is_async=True,
         )
@@ -1316,7 +1251,6 @@ def uninstrument_generate_content(snapshot: object):
 
 def instrument_generate_content(
     otel_wrapper: OTelWrapper,
-    completion_hook: CompletionHook,
     telemetry_handler: TelemetryHandler,
     generate_content_config_key_allowlist: Optional[AllowList] = None,
 ) -> object:
@@ -1334,28 +1268,24 @@ def instrument_generate_content(
     Models.generate_content = _create_instrumented_generate_content(
         snapshot,
         otel_wrapper,
-        completion_hook,
         telemetry_handler,
         generate_content_config_key_allowlist=generate_content_config_key_allowlist,
     )
     Models.generate_content_stream = _create_instrumented_generate_content_stream(
         snapshot,
         otel_wrapper,
-        completion_hook,
         telemetry_handler,
         generate_content_config_key_allowlist=generate_content_config_key_allowlist,
     )
     AsyncModels.generate_content = _create_instrumented_async_generate_content(
         snapshot,
         otel_wrapper,
-        completion_hook,
         telemetry_handler,
         generate_content_config_key_allowlist=generate_content_config_key_allowlist,
     )
     AsyncModels.generate_content_stream = _create_instrumented_async_generate_content_stream(
         snapshot,
         otel_wrapper,
-        completion_hook,
         telemetry_handler,
         generate_content_config_key_allowlist=generate_content_config_key_allowlist,
     )
