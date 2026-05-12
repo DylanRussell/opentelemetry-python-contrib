@@ -1228,41 +1228,45 @@ def _create_instrumented_async_generate_content_stream(  # type: ignore
             )
         )
         if helper.experimental_sem_convs_enabled:
-            with telemetry_handler.inference(
+            invocation = telemetry_handler.start_inference(
                 provider=helper._genai_system,
                 request_model=model,
                 operation_name="generate_content",
-            ) as invocation:
-                invocation.attributes.update(extra_attributes)
-                invocation.tool_definitions = (
-                    await helper._maybe_get_tool_definitions_async(config)
+            )
+            invocation.attributes.update(extra_attributes)
+            invocation.tool_definitions = (
+                await helper._maybe_get_tool_definitions_async(config)
+            )
+            invocation.input_messages = to_input_messages(
+                contents=transformers.t_contents(contents)
+            )
+            if system_content := _config_to_system_instruction(config):
+                invocation.system_instruction = to_system_instructions(
+                    content=transformers.t_contents(system_content)[0]
                 )
-                invocation.input_messages = to_input_messages(
-                    contents=transformers.t_contents(contents)
-                )
-                if system_content := _config_to_system_instruction(config):
-                    invocation.system_instruction = to_system_instructions(
-                        content=transformers.t_contents(system_content)[0]
-                    )
+
+            async def _response_async_generator_wrapper():
                 candidates = []
+                try:
+                    async for resp in await wrapped_func(
+                        self,
+                        model=model,
+                        contents=contents,
+                        config=helper.wrapped_config(config),
+                        **kwargs,
+                    ):
+                        helper._update_response(resp)
+                        if resp.candidates:
+                            candidates += resp.candidates
+                        yield resp
+                    helper.apply_finish_attributes(invocation, candidates)
+                    invocation.stop()
+                except Exception as exc:
+                    helper.apply_finish_attributes(invocation, candidates)
+                    invocation.fail(exc)
+                    raise
 
-                async def _response_async_generator_wrapper(candidates):
-                    try:
-                        async for resp in await wrapped_func(
-                            self,
-                            model=model,
-                            contents=contents,
-                            config=helper.wrapped_config(config),
-                            **kwargs,
-                        ):
-                            helper._update_response(resp)
-                            if resp.candidates:
-                                candidates += resp.candidates
-                            yield resp
-                    finally:
-                        helper.apply_finish_attributes(invocation, candidates)
-
-                return _response_async_generator_wrapper(candidates)
+            return _response_async_generator_wrapper()
         else:
             with helper.start_span_as_current_span(
                 model,
