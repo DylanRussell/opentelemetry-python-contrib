@@ -112,16 +112,6 @@ def should_capture_content_on_spans_in_experimental_mode() -> bool:
     return True
 
 
-# Use this to serialize an Any type to something that can be put in a span attribute.
-# Span attributes must be one of str, bytes, int, float or bool.
-def serialize_any_to_span_attribute(
-    item: Any,
-) -> str | bytes | int | float | bool:
-    if isinstance(item, (str, bytes, int, float, bool)):
-        return item
-    return gen_ai_json_dumps(item)
-
-
 class _GenAiJsonEncoder(json.JSONEncoder):
     def default(self, o: Any) -> Any:
         if isinstance(o, bytes):

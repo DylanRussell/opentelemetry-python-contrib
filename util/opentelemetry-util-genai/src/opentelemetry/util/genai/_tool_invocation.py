@@ -13,7 +13,7 @@ from opentelemetry.trace import Tracer
 from opentelemetry.util.genai._invocation import Error, GenAIInvocation
 from opentelemetry.util.genai.completion_hook import CompletionHook
 from opentelemetry.util.genai.metrics import InvocationMetricsRecorder
-from opentelemetry.util.genai.utils import serialize_any_to_span_attribute
+from opentelemetry.util.genai.utils import gen_ai_json_dumps
 
 
 class ToolInvocation(GenAIInvocation):
@@ -98,13 +98,13 @@ class ToolInvocation(GenAIInvocation):
             (GenAI.GEN_AI_TOOL_DESCRIPTION, self.tool_description),
             (
                 GenAI.GEN_AI_TOOL_CALL_ARGUMENTS,
-                serialize_any_to_span_attribute(self.arguments)
+                gen_ai_json_dumps(self.arguments)
                 if self.arguments is not None
                 else None,
             ),
             (
                 GenAI.GEN_AI_TOOL_CALL_RESULT,
-                serialize_any_to_span_attribute(self.tool_result)
+                gen_ai_json_dumps(self.tool_result)
                 if self.tool_result is not None
                 else None,
             ),

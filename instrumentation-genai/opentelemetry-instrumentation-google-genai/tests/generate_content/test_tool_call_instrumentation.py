@@ -162,7 +162,7 @@ class ToolCallInstrumentationTestCase(TestCase):
         self.otel.assert_has_span_named("execute_tool somefunction")
         generated_span = self.otel.get_span_named("execute_tool somefunction")
         self.assertEqual(
-            generated_span.attributes["gen_ai.tool.call.result"], 125
+            generated_span.attributes["gen_ai.tool.call.result"], "125"
         )
 
     @patch.dict(
