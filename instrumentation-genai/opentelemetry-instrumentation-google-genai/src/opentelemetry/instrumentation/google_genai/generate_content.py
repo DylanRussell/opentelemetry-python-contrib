@@ -1,17 +1,5 @@
 # Copyright The OpenTelemetry Authors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# pylint: disable=too-many-lines
+# SPDX-License-Identifier: Apache-2.0
 
 import copy
 import dataclasses
@@ -56,6 +44,9 @@ from opentelemetry.semconv.attributes import error_attributes
 from opentelemetry.trace.span import Span
 from opentelemetry.util.genai.completion_hook import CompletionHook
 from opentelemetry.util.genai.handler import TelemetryHandler
+from opentelemetry.util.genai.invocation import (
+    InferenceInvocation,
+)
 from opentelemetry.util.genai.types import (
     ContentCapturingMode,
     FunctionToolDefinition,
@@ -557,6 +548,25 @@ class _GenerateContentInstrumentationHelper:
         )
         self._is_async = is_async
 
+    def apply_finish_attributes(
+        self,
+        invocation: InferenceInvocation,
+        candidates: list[Candidate],
+    ):
+        print("Applying the finish attributes now !")
+        print("Cached tokens: {}".format(self._cached_tokens))
+        invocation.input_tokens = self._input_tokens
+        invocation.output_tokens = self._output_tokens
+        invocation.finish_reasons = sorted(self._finish_reasons_set)
+        invocation.cache_read_input_tokens = self._cached_tokens
+        invocation.attributes["gen_ai.usage.reasoning.output_tokens"] = (
+            self._thinking_tokens
+        )
+        if self._content_recording_enabled and candidates:
+            invocation.output_messages = to_output_messages(
+                candidates=candidates
+            )
+
     def wrapped_config(
         self, config: Optional[GenerateContentConfigOrDict]
     ) -> Optional[GenerateContentConfig]:
@@ -934,53 +944,38 @@ def _create_instrumented_generate_content(
             )
         )
         if helper.experimental_sem_convs_enabled:
-            invocation = telemetry_handler.start_inference(
+            with telemetry_handler.inference(
                 provider=helper._genai_system,
                 request_model=model,
                 operation_name="generate_content",
-            )
-            invocation.attributes.update(extra_attributes)
-            invocation.tool_definitions = helper._maybe_get_tool_definitions(
-                config
-            )
-
-            if helper._content_recording_enabled:
-                invocation.input_messages = to_input_messages(
-                    contents=transformers.t_contents(contents)
+            ) as invocation:
+                invocation.attributes.update(extra_attributes)
+                invocation.tool_definitions = (
+                    helper._maybe_get_tool_definitions(config)
                 )
-                if system_content := _config_to_system_instruction(config):
-                    invocation.system_instruction = to_system_instructions(
-                        content=transformers.t_contents(system_content)[0]
+
+                if helper._content_recording_enabled:
+                    invocation.input_messages = to_input_messages(
+                        contents=transformers.t_contents(contents)
                     )
-
-            try:
-                response = wrapped_func(
-                    self,
-                    model=model,
-                    contents=contents,
-                    config=helper.wrapped_config(config),
-                    **kwargs,
-                )
-                helper._update_response(response)
-
-                invocation.input_tokens = helper._input_tokens
-                invocation.output_tokens = helper._output_tokens
-                invocation.finish_reasons = sorted(helper._finish_reasons_set)
-                invocation.cache_read_input_tokens = helper._cached_tokens
-                invocation.attributes[
-                    "gen_ai.usage.reasoning.output_tokens"
-                ] = helper._thinking_tokens
-
-                if helper._content_recording_enabled and response.candidates:
-                    invocation.output_messages = to_output_messages(
-                        candidates=response.candidates
+                    if system_content := _config_to_system_instruction(config):
+                        invocation.system_instruction = to_system_instructions(
+                            content=transformers.t_contents(system_content)[0]
+                        )
+                candidates = []
+                try:
+                    response = wrapped_func(
+                        self,
+                        model=model,
+                        contents=contents,
+                        config=helper.wrapped_config(config),
+                        **kwargs,
                     )
-
-                invocation.stop()
-                return response
-            except Exception as error:
-                invocation.fail(error)
-                raise
+                    candidates.extend(response.candidates)
+                    helper._update_response(response)
+                finally:
+                    print("Applying finsh attributes here..")
+                    helper.apply_finish_attributes(invocation, candidates)
         else:
             with helper.start_span_as_current_span(
                 model, "google.genai.Models.generate_content"
@@ -1043,53 +1038,38 @@ def _create_instrumented_generate_content_stream(
             )
         )
         if helper.experimental_sem_convs_enabled:
-            invocation = telemetry_handler.start_inference(
+            with telemetry_handler.inference(
                 provider=helper._genai_system,
                 request_model=model,
                 operation_name="generate_content",
-            )
-            invocation.attributes.update(extra_attributes)
-            tool_defs = helper._maybe_get_tool_definitions(config)
-            invocation.tool_definitions = tool_defs
+            ) as invocation:
+                invocation.attributes.update(extra_attributes)
+                tool_defs = helper._maybe_get_tool_definitions(config)
+                invocation.tool_definitions = tool_defs
 
-            if helper._content_recording_enabled:
-                invocation.input_messages = to_input_messages(
-                    contents=transformers.t_contents(contents)
-                )
-                if system_content := _config_to_system_instruction(config):
-                    invocation.system_instruction = to_system_instructions(
-                        content=transformers.t_contents(system_content)[0]
+                if helper._content_recording_enabled:
+                    invocation.input_messages = to_input_messages(
+                        contents=transformers.t_contents(contents)
                     )
-            candidates = []
-            try:
-                for resp in wrapped_func(
-                    self,
-                    model=model,
-                    contents=contents,
-                    config=helper.wrapped_config(config),
-                    **kwargs,
-                ):
-                    helper._update_response(resp)
-                    if resp.candidates:
-                        candidates += resp.candidates
+                    if system_content := _config_to_system_instruction(config):
+                        invocation.system_instruction = to_system_instructions(
+                            content=transformers.t_contents(system_content)[0]
+                        )
+                candidates = []
+                try:
+                    for resp in wrapped_func(
+                        self,
+                        model=model,
+                        contents=contents,
+                        config=helper.wrapped_config(config),
+                        **kwargs,
+                    ):
+                        helper._update_response(resp)
+                        if resp.candidates:
+                            candidates += resp.candidates
                     yield resp
-            except Exception as error:
-                invocation.fail(error)
-                raise
-            finally:
-                invocation.input_tokens = helper._input_tokens
-                invocation.output_tokens = helper._output_tokens
-                invocation.finish_reasons = sorted(helper._finish_reasons_set)
-                invocation.cache_read_input_tokens = helper._cached_tokens
-                invocation.attributes[
-                    "gen_ai.usage.reasoning.output_tokens"
-                ] = helper._thinking_tokens
-
-                if helper._content_recording_enabled and candidates:
-                    invocation.output_messages = to_output_messages(
-                        candidates=candidates
-                    )
-                invocation.stop()
+                finally:
+                    helper.apply_finish_attributes(invocation, candidates)
         else:
             with helper.start_span_as_current_span(
                 model, "google.genai.Models.generate_content_stream"
@@ -1152,53 +1132,39 @@ def _create_instrumented_async_generate_content(
             )
         )
         if helper.experimental_sem_convs_enabled:
-            invocation = telemetry_handler.start_inference(
+            with telemetry_handler.inference(
                 provider=helper._genai_system,
                 request_model=model,
                 operation_name="generate_content",
-            )
-            invocation.attributes.update(extra_attributes)
-            invocation.tool_definitions = (
-                await helper._maybe_get_tool_definitions_async(config)
-            )
-
-            if helper._content_recording_enabled:
-                invocation.input_messages = to_input_messages(
-                    contents=transformers.t_contents(contents)
+            ) as invocation:
+                invocation.attributes.update(extra_attributes)
+                invocation.tool_definitions = (
+                    await helper._maybe_get_tool_definitions_async(config)
                 )
-                if system_content := _config_to_system_instruction(config):
-                    invocation.system_instruction = to_system_instructions(
-                        content=transformers.t_contents(system_content)[0]
+
+                if helper._content_recording_enabled:
+                    invocation.input_messages = to_input_messages(
+                        contents=transformers.t_contents(contents)
                     )
-
-            try:
-                response = await wrapped_func(
-                    self,
-                    model=model,
-                    contents=contents,
-                    config=helper.wrapped_config(config),
-                    **kwargs,
-                )
-                helper._update_response(response)
-
-                invocation.input_tokens = helper._input_tokens
-                invocation.output_tokens = helper._output_tokens
-                invocation.finish_reasons = sorted(helper._finish_reasons_set)
-                invocation.cache_read_input_tokens = helper._cached_tokens
-                invocation.attributes[
-                    "gen_ai.usage.reasoning.output_tokens"
-                ] = helper._thinking_tokens
-
-                if helper._content_recording_enabled and response.candidates:
-                    invocation.output_messages = to_output_messages(
-                        candidates=response.candidates
+                    if system_content := _config_to_system_instruction(config):
+                        invocation.system_instruction = to_system_instructions(
+                            content=transformers.t_contents(system_content)[0]
+                        )
+                candidates = []
+                try:
+                    response = await wrapped_func(
+                        self,
+                        model=model,
+                        contents=contents,
+                        config=helper.wrapped_config(config),
+                        **kwargs,
                     )
+                    helper._update_response(response)
+                    candidates += response.candidates
+                    return response
+                finally:
+                    helper.apply_finish_attributes(invocation, candidates)
 
-                invocation.stop()
-                return response
-            except Exception as error:
-                invocation.fail(error)
-                raise
         else:
             with helper.start_span_as_current_span(
                 model, "google.genai.AsyncModels.generate_content"
@@ -1262,68 +1228,41 @@ def _create_instrumented_async_generate_content_stream(  # type: ignore
             )
         )
         if helper.experimental_sem_convs_enabled:
-            invocation = telemetry_handler.start_inference(
+            with telemetry_handler.inference(
                 provider=helper._genai_system,
                 request_model=model,
                 operation_name="generate_content",
-            )
-            invocation.attributes.update(extra_attributes)
-            invocation.tool_definitions = (
-                await helper._maybe_get_tool_definitions_async(config)
-            )
-            invocation.input_messages = to_input_messages(
-                contents=transformers.t_contents(contents)
-            )
-            if system_content := _config_to_system_instruction(config):
-                invocation.system_instruction = to_system_instructions(
-                    content=transformers.t_contents(system_content)[0]
+            ) as invocation:
+                invocation.attributes.update(extra_attributes)
+                invocation.tool_definitions = (
+                    await helper._maybe_get_tool_definitions_async(config)
                 )
-
-            try:
-                response_async_generator = await wrapped_func(
-                    self,
-                    model=model,
-                    contents=contents,
-                    config=helper.wrapped_config(config),
-                    **kwargs,
+                invocation.input_messages = to_input_messages(
+                    contents=transformers.t_contents(contents)
                 )
+                if system_content := _config_to_system_instruction(config):
+                    invocation.system_instruction = to_system_instructions(
+                        content=transformers.t_contents(system_content)[0]
+                    )
+                candidates = []
 
-                async def _response_async_generator_wrapper():
-                    candidates = []
+                async def _response_async_generator_wrapper(candidates):
                     try:
-                        async for resp in response_async_generator:
+                        async for resp in await wrapped_func(
+                            self,
+                            model=model,
+                            contents=contents,
+                            config=helper.wrapped_config(config),
+                            **kwargs,
+                        ):
                             helper._update_response(resp)
                             if resp.candidates:
                                 candidates += resp.candidates
                             yield resp
-                    except Exception as e:
-                        invocation.fail(e)
-                        raise
                     finally:
-                        invocation.input_tokens = helper._input_tokens
-                        invocation.output_tokens = helper._output_tokens
-                        invocation.finish_reasons = sorted(
-                            helper._finish_reasons_set
-                        )
-                        invocation.cache_read_input_tokens = (
-                            helper._cached_tokens
-                        )
-                        invocation.attributes[
-                            "gen_ai.usage.reasoning.output_tokens"
-                        ] = helper._thinking_tokens
+                        helper.apply_finish_attributes(invocation, candidates)
 
-                        if candidates:
-                            invocation.output_messages = to_output_messages(
-                                candidates=candidates
-                            )
-
-                        invocation.stop()
-
-                return _response_async_generator_wrapper()
-
-            except Exception as error:
-                invocation.fail(error)
-                raise
+                return _response_async_generator_wrapper(candidates)
         else:
             with helper.start_span_as_current_span(
                 model,

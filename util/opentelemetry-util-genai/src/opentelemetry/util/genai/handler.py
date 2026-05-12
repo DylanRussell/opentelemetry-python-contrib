@@ -134,6 +134,8 @@ class TelemetryHandler:
 
     # New-style factory methods: construct + start in one call, handler stored on invocation
 
+    # When updating this function signature, make sure to modify the `inference`
+    # function signature in the exact same way..
     def start_inference(
         self,
         provider: str,
@@ -275,6 +277,7 @@ class TelemetryHandler:
         request_model: str | None = None,
         server_address: str | None = None,
         server_port: int | None = None,
+        operation_name: str | None = None,
     ) -> AbstractContextManager[InferenceInvocation]:
         """Context manager for LLM inference invocations.
 
@@ -289,6 +292,7 @@ class TelemetryHandler:
             request_model=request_model,
             server_address=server_address,
             server_port=server_port,
+            operation_name=operation_name,
         )._managed()
 
     def embedding(
