@@ -553,8 +553,6 @@ class _GenerateContentInstrumentationHelper:
         invocation: InferenceInvocation,
         candidates: list[Candidate],
     ):
-        print("Applying the finish attributes now !")
-        print("Cached tokens: {}".format(self._cached_tokens))
         invocation.input_tokens = self._input_tokens
         invocation.output_tokens = self._output_tokens
         invocation.finish_reasons = sorted(self._finish_reasons_set)
@@ -974,7 +972,6 @@ def _create_instrumented_generate_content(
                     candidates.extend(response.candidates)
                     helper._update_response(response)
                 finally:
-                    print("Applying finsh attributes here..")
                     helper.apply_finish_attributes(invocation, candidates)
         else:
             with helper.start_span_as_current_span(
