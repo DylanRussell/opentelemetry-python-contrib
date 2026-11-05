@@ -15,8 +15,8 @@ from opentelemetry.util._importlib_metadata import (
 
 _logger = getLogger(__name__)
 _PACKAGE_NAME_RE = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
-_VERSION_PREFIX_RE = re.compile(r"^\s*(\d+)(?:\.(\d+))?(?:\.(\d+))?")
-_SPEC_RE = re.compile(r"(>=|<)\s*([^\s,;]+)")
+_VERSION_PREFIX_RE = re.compile(r"^\s*v?(\d+)(?:\.(\d+))?(?:\.(\d+))?", re.IGNORECASE)
+_SPEC_RE = re.compile(r"(~=|==|!=|<=|>=|<|>)\s*([^\s,;]+)")
 _EXTRA_RE = re.compile(r"""\bextra\s*==\s*['"]([^'"]+)['"]""")
 
 
@@ -30,20 +30,36 @@ def _parse_version_tuple(version_str: str) -> tuple[int, int, int] | None:
 
 
 def _matches_specifiers(installed_version_str: str, spec_str: str) -> bool:
-    """Check whether installed_version_str falls within the >= / < bounds in spec_str."""
+    """Check whether installed_version_str satisfies all comma-separated version specifiers in spec_str."""
     if not spec_str.strip():
         return True
     installed = _parse_version_tuple(installed_version_str)
     if installed is None:
         return False
     for op, target_str in _SPEC_RE.findall(spec_str):
-        target = _parse_version_tuple(target_str)
-        if target is None:
+        match = _VERSION_PREFIX_RE.match(target_str)
+        if not match:
             return False
+        major, minor, patch = match.groups(default="0")
+        target = (int(major), int(minor), int(patch))
         if op == ">=" and installed < target:
+            return False
+        if op == "<=" and installed > target:
+            return False
+        if op == ">" and installed <= target:
             return False
         if op == "<" and installed >= target:
             return False
+        if op == "==" and installed != target:
+            return False
+        if op == "!=" and installed == target:
+            return False
+        if op == "~=":
+            if match.group(2) is None:
+                return False
+            upper = (target[0] + 1, 0, 0) if match.group(3) is None else (target[0], target[1] + 1, 0)
+            if not (installed >= target and installed < upper):
+                return False
     return True
 
 
@@ -173,7 +189,15 @@ def get_dist_dependency_conflicts(
                 continue
             _, _, marker = dep.partition(";")
             extras = _EXTRA_RE.findall(marker)
-            _, _, norm_dep = _parse_dependency(dep)
+            try:
+                _, _, norm_dep = _parse_dependency(dep)
+            except ValueError as exc:
+                _logger.warning(
+                    'error parsing dependency, reporting as a conflict: "%s" - %s',
+                    dep,
+                    exc,
+                )
+                return DependencyConflict(dep)
             if instruments in extras:
                 instrumentation_deps.append(norm_dep)
             if instruments_any in extras:
