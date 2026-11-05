@@ -185,7 +185,6 @@ from time import time_ns
 from timeit import default_timer
 
 import falcon
-from packaging import version as package_version
 
 import opentelemetry.instrumentation.wsgi as otel_wsgi
 from opentelemetry import context, trace
@@ -231,12 +230,12 @@ _ENVIRON_EXC = "opentelemetry-falcon.exc"
 
 _response_propagation_setter = FuncSetter(falcon.Response.append_header)
 
-_parsed_falcon_version = package_version.parse(falcon.__version__)
-if _parsed_falcon_version >= package_version.parse("3.0.0"):
+_falcon_major_version = int(falcon.__version__.split(".", maxsplit=1)[0])
+if _falcon_major_version >= 3:
     # Falcon 3
     _instrument_app = "App"
     _falcon_version = 3
-elif _parsed_falcon_version >= package_version.parse("2.0.0"):
+elif _falcon_major_version >= 2:
     # Falcon 2
     _instrument_app = "API"
     _falcon_version = 2

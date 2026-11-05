@@ -8,7 +8,6 @@ from typing import Any
 
 import pika
 import wrapt
-from packaging import version
 from pika.adapters import BlockingConnection
 from pika.adapters.blocking_connection import (
     BlockingChannel,
@@ -32,8 +31,8 @@ _FUNCTIONS_TO_UNINSTRUMENT = ["basic_publish"]
 
 
 def _consumer_callback_attribute_name() -> str:
-    pika_version = version.parse(pika.__version__)
-    return "on_message_callback" if pika_version >= version.parse("1.0.0") else "consumer_cb"
+    pika_major_version = int(pika.__version__.split(".", maxsplit=1)[0])
+    return "on_message_callback" if pika_major_version >= 1 else "consumer_cb"
 
 
 class PikaInstrumentor(BaseInstrumentor):  # type: ignore

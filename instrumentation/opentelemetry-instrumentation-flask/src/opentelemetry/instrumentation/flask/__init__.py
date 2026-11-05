@@ -255,7 +255,6 @@ from time import time_ns
 from timeit import default_timer
 
 import flask
-from packaging import version as package_version
 
 import opentelemetry.instrumentation.wsgi as otel_wsgi
 from opentelemetry import context, trace
@@ -304,12 +303,12 @@ _ENVIRON_TOKEN = "opentelemetry-flask.token"
 
 _excluded_urls_from_env = get_excluded_urls("FLASK")
 
-flask_version = version("flask")
+flask_version = tuple(int(x) for x in version("flask").split(".")[:2] if x.isdigit())
 
 # Global constant for Flask 3.1+ streaming context cleanup
-_IS_FLASK_31_PLUS = package_version.parse(flask_version) >= package_version.parse("3.1.0")
+_IS_FLASK_31_PLUS = flask_version >= (3, 1)
 
-if package_version.parse(flask_version) >= package_version.parse("2.2.0"):
+if flask_version >= (2, 2):
 
     def _request_ctx_ref() -> weakref.ReferenceType:
         return weakref.ref(flask.globals.request_ctx._get_current_object())

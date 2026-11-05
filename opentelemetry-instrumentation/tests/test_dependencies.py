@@ -6,7 +6,6 @@
 from unittest.mock import Mock, patch
 
 import pytest
-from packaging.requirements import Requirement
 
 from opentelemetry.instrumentation.dependencies import (
     DependencyConflict,
@@ -24,22 +23,8 @@ class TestDependencyConflicts(TestBase):
     def test_get_dependency_conflicts_empty(self):
         self.assertIsNone(get_dependency_conflicts([]))
 
-    def test_get_dependency_conflicts_no_conflict_requirement(self):
-        req = Requirement("pytest")
-        self.assertIsNone(get_dependency_conflicts([req]))
-
     def test_get_dependency_conflicts_no_conflict(self):
         self.assertIsNone(get_dependency_conflicts(["pytest"]))
-
-    def test_get_dependency_conflicts_not_installed_requirement(self):
-        req = Requirement("this-package-does-not-exist")
-        conflict = get_dependency_conflicts([req])
-        self.assertTrue(conflict is not None)
-        self.assertTrue(isinstance(conflict, DependencyConflict))
-        self.assertEqual(
-            str(conflict),
-            'This instrumentation only instruments "this-package-does-not-exist", but no installed version was found, so nothing can be instrumented.',
-        )
 
     def test_get_dependency_conflicts_not_installed(self):
         conflict = get_dependency_conflicts(["this-package-does-not-exist"])
@@ -58,6 +43,16 @@ class TestDependencyConflicts(TestBase):
             str(conflict),
             f'This instrumentation only instruments "pytest == 5000", but currently installed version ("pytest {pytest.__version__}") falls outside of that range, so nothing can be instrumented.',
         )
+
+    @patch("opentelemetry.instrumentation.dependencies.version")
+    def test_get_dependency_conflicts_version_specifiers_and_suffixes(self, version_mock):
+        # Verify numeric prefix matching handles PEP 440 pre/post/dev/local suffixes
+        version_mock.return_value = "3.1.0.post1.dev3+g1234abc"
+        self.assertIsNone(get_dependency_conflicts(["flask >= 1.0, < 4.0"]))
+        self.assertIsNone(get_dependency_conflicts(["flask ~= 3.0"]))
+        self.assertIsNone(get_dependency_conflicts(["flask ~= 3.1"]))
+        self.assertIsNotNone(get_dependency_conflicts(["flask ~= 3.2"]))
+        self.assertIsNotNone(get_dependency_conflicts(["flask >= 4.0"]))
 
     def test_get_dist_dependency_conflicts(self):
         class MockDistribution(Distribution):

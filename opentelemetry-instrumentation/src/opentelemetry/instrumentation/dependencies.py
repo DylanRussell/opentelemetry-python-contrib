@@ -3,10 +3,9 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Collection
 from logging import Logger, getLogger
-
-from packaging.requirements import InvalidRequirement, Requirement
 
 from opentelemetry.util._importlib_metadata import (
     Distribution,
@@ -15,6 +14,74 @@ from opentelemetry.util._importlib_metadata import (
 )
 
 _logger = getLogger(__name__)
+_PACKAGE_NAME_RE = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
+_VERSION_PREFIX_RE = re.compile(r"^\s*v?(?:\d+!)?(\d+(?:\.\d+)*)", re.IGNORECASE)
+_SPEC_RE = re.compile(r"(~=|==|!=|<=|>=|<|>)\s*([^\s,;]+)")
+_EXTRA_RE = re.compile(r"""\bextra\s*==\s*['"]([^'"]+)['"]""")
+
+
+def _parse_version_tuple(version_str: str) -> tuple[int, ...]:
+    """Extract the normalized numeric (major, minor, patch, ...) prefix from a version string."""
+    match = _VERSION_PREFIX_RE.match(version_str)
+    if not match:
+        return ()
+    parts = [int(x) for x in match.group(1).split(".")]
+    while len(parts) > 1 and parts[-1] == 0:
+        parts.pop()
+    return tuple(parts)
+
+
+def _matches_specifiers(installed_version_str: str, spec_str: str) -> bool:
+    """Check whether installed_version_str satisfies all comma-separated version specifiers in spec_str."""
+    if not spec_str.strip():
+        return True
+    installed = _parse_version_tuple(installed_version_str)
+    if not installed:
+        return False
+    for op, target_str in _SPEC_RE.findall(spec_str):
+        target = _parse_version_tuple(target_str)
+        if not target:
+            return False
+        if op == ">=" and not installed >= target:
+            return False
+        if op == "<=" and not installed <= target:
+            return False
+        if op == ">" and not installed > target:
+            return False
+        if op == "<" and not installed < target:
+            return False
+        if op == "==" and installed != target:
+            return False
+        if op == "!=" and installed == target:
+            return False
+        if op == "~=":
+            raw_parts = [int(x) for x in target_str.split(".") if x.isdigit()]
+            if len(raw_parts) < 2:
+                return False
+            upper = tuple(raw_parts[:-2] + [raw_parts[-2] + 1])
+            if not (installed >= target and installed < upper):
+                return False
+    return True
+
+
+def _parse_dependency(dep: str) -> tuple[str, str, str]:
+    """Parse a requirement string into (package_name, specifier_part, normalized_display_str)."""
+    req_part, sep, marker_part = dep.partition(";")
+    match = _PACKAGE_NAME_RE.match(req_part)
+    if not match:
+        raise ValueError(f"Invalid dependency requirement: {dep!r}")
+    name = match.group(1)
+    spec_part = req_part[match.end() :].strip()
+    # Validate that any trailing text after the package name consists of valid specifiers
+    if spec_part:
+        cleaned = _SPEC_RE.sub("", spec_part).replace(",", "").strip()
+        if cleaned:
+            raise ValueError(f"Invalid specifier in requirement: {dep!r}")
+    norm_spec = ",".join(f"{op}{ver}" for op, ver in _SPEC_RE.findall(spec_part))
+    norm_str = f"{name}{norm_spec}"
+    if sep:
+        norm_str = f"{norm_str}; {marker_part.strip()}"
+    return name, spec_part, norm_str
 
 
 def _format_deps(deps: Collection[str]) -> str:
@@ -110,53 +177,50 @@ class DependencyConflictError(Exception):
 def get_dist_dependency_conflicts(
     dist: Distribution,
 ) -> DependencyConflict | None:
-    instrumentation_deps = []
-    instrumentation_any_deps = []
+    instrumentation_deps: list[str] = []
+    instrumentation_any_deps: list[str] = []
     extra = "extra"
     instruments = "instruments"
-    instruments_marker = {extra: instruments}
     instruments_any = "instruments-any"
-    instruments_any_marker = {extra: instruments_any}
     if dist.requires:
         for dep in dist.requires:
             if extra not in dep:
                 continue
             if instruments not in dep and instruments_any not in dep:
                 continue
-
-            req = Requirement(dep)
-            if req.marker.evaluate(instruments_marker):  # type: ignore
-                instrumentation_deps.append(req)  # type: ignore
-            if req.marker.evaluate(instruments_any_marker):  # type: ignore
-                instrumentation_any_deps.append(req)  # type: ignore
-    return get_dependency_conflicts(instrumentation_deps, instrumentation_any_deps)  # type: ignore
+            _, _, marker = dep.partition(";")
+            extras = _EXTRA_RE.findall(marker)
+            _, _, norm_dep = _parse_dependency(dep)
+            if instruments in extras:
+                instrumentation_deps.append(norm_dep)
+            if instruments_any in extras:
+                instrumentation_any_deps.append(norm_dep)
+    return get_dependency_conflicts(instrumentation_deps, instrumentation_any_deps)
 
 
 def get_dependency_conflicts(
-    deps: Collection[str | Requirement],  # Dependencies all of which are required
-    deps_any: Collection[str | Requirement] | None = None,  # Dependencies any of which are required
+    deps: Collection[str],  # Dependencies all of which are required
+    deps_any: Collection[str] | None = None,  # Dependencies any of which are required
 ) -> DependencyConflict | None:
     for dep in deps:
-        if isinstance(dep, Requirement):
-            req = dep
-        else:
-            try:
-                req = Requirement(dep)
-            except InvalidRequirement as exc:
-                _logger.warning(
-                    'error parsing dependency, reporting as a conflict: "%s" - %s',
-                    dep,
-                    exc,
-                )
-                return DependencyConflict(dep)
+        dep_str = str(dep)
+        try:
+            pkg_name, spec_part, _ = _parse_dependency(dep_str)
+        except ValueError as exc:
+            _logger.warning(
+                'error parsing dependency, reporting as a conflict: "%s" - %s',
+                dep,
+                exc,
+            )
+            return DependencyConflict(dep_str)
 
         try:
-            dist_version = version(req.name)
+            dist_version = version(pkg_name)
         except PackageNotFoundError:
-            return DependencyConflict(dep)
+            return DependencyConflict(dep_str)
 
-        if not req.specifier.contains(dist_version):
-            return DependencyConflict(dep, f"{req.name} {dist_version}")
+        if not _matches_specifiers(dist_version, spec_part):
+            return DependencyConflict(dep_str, f"{pkg_name} {dist_version}")
 
     # If all the dependencies in "instruments" are present, check "instruments-any" for conflicts.
     if deps_any:
@@ -166,7 +230,7 @@ def get_dependency_conflicts(
 
 # This is a helper functions designed to ease reading and meet linting requirements.
 def _get_dependency_conflicts_any(
-    deps_any: Collection[str | Requirement],
+    deps_any: Collection[str],
 ) -> DependencyConflict | None:
     if not deps_any:
         return None
@@ -174,32 +238,30 @@ def _get_dependency_conflicts_any(
     required_any: Collection[str] = []
     found_any: Collection[str] = []
     for dep in deps_any:
-        if isinstance(dep, Requirement):
-            req = dep
-        else:
-            try:
-                req = Requirement(dep)
-            except InvalidRequirement as exc:
-                _logger.warning(
-                    'error parsing dependency, reporting as a conflict: "%s" - %s',
-                    dep,
-                    exc,
-                )
-                return DependencyConflict(dep)
+        dep_str = str(dep)
+        try:
+            pkg_name, spec_part, _ = _parse_dependency(dep_str)
+        except ValueError as exc:
+            _logger.warning(
+                'error parsing dependency, reporting as a conflict: "%s" - %s',
+                dep,
+                exc,
+            )
+            return DependencyConflict(dep_str)
 
         try:
-            dist_version = version(req.name)
+            dist_version = version(pkg_name)
         except PackageNotFoundError:
-            required_any.append(str(dep))
+            required_any.append(dep_str)
             continue
 
-        if req.specifier.contains(dist_version):
+        if _matches_specifiers(dist_version, spec_part):
             # Since only one of the instrumentation_any dependencies is required, there is no dependency conflict.
             is_dependency_conflict = False
             break
         # If the version does not match, add it to the list of unfulfilled requirement options.
-        required_any.append(str(dep))
-        found_any.append(f"{req.name} {dist_version}")
+        required_any.append(dep_str)
+        found_any.append(f"{pkg_name} {dist_version}")
 
     if is_dependency_conflict:
         return DependencyConflict(

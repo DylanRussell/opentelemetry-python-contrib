@@ -12,13 +12,15 @@ from subprocess import (
     check_call,
 )
 
-from packaging.requirements import Requirement
-
 from opentelemetry.instrumentation.bootstrap_gen import (
     default_instrumentations as gen_default_instrumentations,
 )
 from opentelemetry.instrumentation.bootstrap_gen import (
     libraries as gen_libraries,
+)
+from opentelemetry.instrumentation.dependencies import (
+    _matches_specifiers,
+    _parse_dependency,
 )
 from opentelemetry.instrumentation.version import __version__
 from opentelemetry.util._importlib_metadata import (
@@ -84,17 +86,16 @@ def _pip_check(libraries):
 
 
 def _is_installed(req):
-    req = Requirement(req)
-
     try:
-        dist_version = version(req.name)
-    except PackageNotFoundError:
+        pkg_name, spec_part, norm_req = _parse_dependency(req)
+        dist_version = version(pkg_name)
+    except (ValueError, PackageNotFoundError):
         return False
 
-    if not req.specifier.filter(dist_version):
+    if not _matches_specifiers(dist_version, spec_part):
         logger.warning(
             "instrumentation for package %s is available but version %s is installed. Skipping.",
-            req,
+            norm_req,
             dist_version,
         )
         return False

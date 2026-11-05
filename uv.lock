@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.10"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -2737,7 +2737,6 @@ source = { editable = "opentelemetry-instrumentation" }
 dependencies = [
     { name = "opentelemetry-api" },
     { name = "opentelemetry-semantic-conventions" },
-    { name = "packaging" },
     { name = "wrapt" },
 ]
 
@@ -2745,7 +2744,6 @@ dependencies = [
 requires-dist = [
     { name = "opentelemetry-api", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-api&branch=main" },
     { name = "opentelemetry-semantic-conventions", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-semantic-conventions&branch=main" },
-    { name = "packaging", specifier = ">=18.0" },
     { name = "wrapt", specifier = ">=1.0.0,<3.0.0" },
 ]
 
@@ -3223,7 +3221,6 @@ dependencies = [
     { name = "opentelemetry-instrumentation-wsgi" },
     { name = "opentelemetry-semantic-conventions" },
     { name = "opentelemetry-util-http" },
-    { name = "packaging" },
 ]
 
 [package.optional-dependencies]
@@ -3239,7 +3236,6 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-wsgi", editable = "instrumentation/opentelemetry-instrumentation-wsgi" },
     { name = "opentelemetry-semantic-conventions", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-semantic-conventions&branch=main" },
     { name = "opentelemetry-util-http", editable = "util/opentelemetry-util-http" },
-    { name = "packaging", specifier = ">=20.0" },
 ]
 provides-extras = ["instruments"]
 
@@ -3279,7 +3275,6 @@ dependencies = [
     { name = "opentelemetry-instrumentation-wsgi" },
     { name = "opentelemetry-semantic-conventions" },
     { name = "opentelemetry-util-http" },
-    { name = "packaging" },
 ]
 
 [package.optional-dependencies]
@@ -3295,7 +3290,6 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-wsgi", editable = "instrumentation/opentelemetry-instrumentation-wsgi" },
     { name = "opentelemetry-semantic-conventions", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-semantic-conventions&branch=main" },
     { name = "opentelemetry-util-http", editable = "util/opentelemetry-util-http" },
-    { name = "packaging", specifier = ">=21.0" },
 ]
 provides-extras = ["instruments"]
 
@@ -3523,7 +3517,6 @@ dependencies = [
     { name = "opentelemetry-api" },
     { name = "opentelemetry-instrumentation" },
     { name = "opentelemetry-semantic-conventions" },
-    { name = "packaging" },
     { name = "wrapt" },
 ]
 
@@ -3537,7 +3530,6 @@ requires-dist = [
     { name = "opentelemetry-api", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-api&branch=main" },
     { name = "opentelemetry-instrumentation", editable = "opentelemetry-instrumentation" },
     { name = "opentelemetry-semantic-conventions", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-semantic-conventions&branch=main" },
-    { name = "packaging", specifier = ">=20.0" },
     { name = "pika", marker = "extra == 'instruments'", specifier = ">=0.12.0" },
     { name = "wrapt", specifier = ">=1.0.0,<3.0.0" },
 ]
@@ -3796,7 +3788,6 @@ dependencies = [
     { name = "opentelemetry-api" },
     { name = "opentelemetry-instrumentation" },
     { name = "opentelemetry-semantic-conventions" },
-    { name = "packaging" },
     { name = "wrapt" },
 ]
 
@@ -3810,7 +3801,6 @@ requires-dist = [
     { name = "opentelemetry-api", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-api&branch=main" },
     { name = "opentelemetry-instrumentation", editable = "opentelemetry-instrumentation" },
     { name = "opentelemetry-semantic-conventions", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-semantic-conventions&branch=main" },
-    { name = "packaging", specifier = ">=21.0" },
     { name = "sqlalchemy", marker = "extra == 'instruments'", specifier = ">=1.4.3,<2.2.0" },
     { name = "wrapt", specifier = ">=1.11.2" },
 ]

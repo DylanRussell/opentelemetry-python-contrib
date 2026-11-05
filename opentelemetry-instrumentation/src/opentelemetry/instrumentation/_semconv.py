@@ -9,8 +9,6 @@ from collections.abc import Container, Mapping, MutableMapping
 from enum import Enum
 from urllib.parse import urlparse
 
-from packaging import version as package_version
-
 from opentelemetry.instrumentation.utils import http_status_to_status_code
 from opentelemetry.semconv._incubating.attributes import messaging_attributes
 from opentelemetry.semconv._incubating.attributes.db_attributes import (
@@ -792,6 +790,6 @@ def _get_schema_url_for_signal_types(
         mode = _OpenTelemetrySemanticConventionStability._get_opentelemetry_stability_opt_in_mode(signal_type)
         schema_version = _get_schema_version_for_opt_in_mode(signal_type, mode)
         # Keep the highest for all signals
-        if package_version.Version(schema_version) > package_version.Version(highest_schema_version):
+        if tuple(int(x) for x in schema_version.split(".")) > tuple(int(x) for x in highest_schema_version.split(".")):
             highest_schema_version = schema_version
     return f"https://opentelemetry.io/schemas/{highest_schema_version}"
