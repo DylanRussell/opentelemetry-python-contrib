@@ -2,4 +2,4 @@
 # SPDX-License-Identifier: Apache-2.0
 from collections.abc import Collection
 
-_instruments: Collection[str] = ("boto3 ~= 1.0",)
+_instruments: Collection[str] = ("boto3 >= 1.0.0, < 2.0.0",)

@@ -1,7 +1,7 @@
 # Copyright The OpenTelemetry Authors
 # SPDX-License-Identifier: Apache-2.0
 
-_instruments_botocore = ("botocore ~= 1.0",)
+_instruments_botocore = ("botocore >= 1.0.0, < 2.0.0",)
 _instruments_aiobotocore = ("aiobotocore >= 2.0, < 4.0",)
 
 _instruments = ()

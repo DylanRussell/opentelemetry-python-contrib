@@ -15,52 +15,35 @@ from opentelemetry.util._importlib_metadata import (
 
 _logger = getLogger(__name__)
 _PACKAGE_NAME_RE = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
-_VERSION_PREFIX_RE = re.compile(r"^\s*v?(?:\d+!)?(\d+(?:\.\d+)*)", re.IGNORECASE)
-_SPEC_RE = re.compile(r"(~=|==|!=|<=|>=|<|>)\s*([^\s,;]+)")
+_VERSION_PREFIX_RE = re.compile(r"^\s*(\d+)(?:\.(\d+))?(?:\.(\d+))?")
+_SPEC_RE = re.compile(r"(>=|<)\s*([^\s,;]+)")
 _EXTRA_RE = re.compile(r"""\bextra\s*==\s*['"]([^'"]+)['"]""")
 
 
-def _parse_version_tuple(version_str: str) -> tuple[int, ...]:
-    """Extract the normalized numeric (major, minor, patch, ...) prefix from a version string."""
+def _parse_version_tuple(version_str: str) -> tuple[int, int, int] | None:
+    """Extract the (major, minor, patch) prefix from a version string, dropping any suffix."""
     match = _VERSION_PREFIX_RE.match(version_str)
     if not match:
-        return ()
-    parts = [int(x) for x in match.group(1).split(".")]
-    while len(parts) > 1 and parts[-1] == 0:
-        parts.pop()
-    return tuple(parts)
+        return None
+    major, minor, patch = match.groups(default="0")
+    return (int(major), int(minor), int(patch))
 
 
 def _matches_specifiers(installed_version_str: str, spec_str: str) -> bool:
-    """Check whether installed_version_str satisfies all comma-separated version specifiers in spec_str."""
+    """Check whether installed_version_str falls within the >= / < bounds in spec_str."""
     if not spec_str.strip():
         return True
     installed = _parse_version_tuple(installed_version_str)
-    if not installed:
+    if installed is None:
         return False
     for op, target_str in _SPEC_RE.findall(spec_str):
         target = _parse_version_tuple(target_str)
-        if not target:
+        if target is None:
             return False
-        if op == ">=" and not installed >= target:
+        if op == ">=" and installed < target:
             return False
-        if op == "<=" and not installed <= target:
+        if op == "<" and installed >= target:
             return False
-        if op == ">" and not installed > target:
-            return False
-        if op == "<" and not installed < target:
-            return False
-        if op == "==" and installed != target:
-            return False
-        if op == "!=" and installed == target:
-            return False
-        if op == "~=":
-            raw_parts = [int(x) for x in target_str.split(".") if x.isdigit()]
-            if len(raw_parts) < 2:
-                return False
-            upper = tuple(raw_parts[:-2] + [raw_parts[-2] + 1])
-            if not (installed >= target and installed < upper):
-                return False
     return True
 
 

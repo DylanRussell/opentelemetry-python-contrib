@@ -36,23 +36,24 @@ class TestDependencyConflicts(TestBase):
         )
 
     def test_get_dependency_conflicts_mismatched_version(self):
-        conflict = get_dependency_conflicts(["pytest == 5000"])
+        conflict = get_dependency_conflicts(["pytest >= 5000.0.0"])
         self.assertTrue(conflict is not None)
         self.assertTrue(isinstance(conflict, DependencyConflict))
         self.assertEqual(
             str(conflict),
-            f'This instrumentation only instruments "pytest == 5000", but currently installed version ("pytest {pytest.__version__}") falls outside of that range, so nothing can be instrumented.',
+            f'This instrumentation only instruments "pytest >= 5000.0.0", but currently installed version ("pytest {pytest.__version__}") falls outside of that range, so nothing can be instrumented.',
         )
 
     @patch("opentelemetry.instrumentation.dependencies.version")
     def test_get_dependency_conflicts_version_specifiers_and_suffixes(self, version_mock):
-        # Verify numeric prefix matching handles PEP 440 pre/post/dev/local suffixes
+        # Verify x.y.z prefix matching drops any pre/post/dev/local suffixes
         version_mock.return_value = "3.1.0.post1.dev3+g1234abc"
-        self.assertIsNone(get_dependency_conflicts(["flask >= 1.0, < 4.0"]))
-        self.assertIsNone(get_dependency_conflicts(["flask ~= 3.0"]))
-        self.assertIsNone(get_dependency_conflicts(["flask ~= 3.1"]))
-        self.assertIsNotNone(get_dependency_conflicts(["flask ~= 3.2"]))
-        self.assertIsNotNone(get_dependency_conflicts(["flask >= 4.0"]))
+        self.assertIsNone(get_dependency_conflicts(["flask >= 1.0.0, < 4.0.0"]))
+        self.assertIsNone(get_dependency_conflicts(["flask >= 3.0.0, < 4.0.0"]))
+        self.assertIsNone(get_dependency_conflicts(["flask >= 3.1.0, < 3.2.0"]))
+        self.assertIsNotNone(get_dependency_conflicts(["flask >= 3.2.0, < 4.0.0"]))
+        self.assertIsNotNone(get_dependency_conflicts(["flask >= 4.0.0"]))
+        self.assertIsNotNone(get_dependency_conflicts(["flask < 3.1.0"]))
 
     def test_get_dist_dependency_conflicts(self):
         class MockDistribution(Distribution):
@@ -64,7 +65,7 @@ class TestDependencyConflicts(TestBase):
 
             @property
             def requires(self):
-                return ['test-pkg ~= 1.0; extra == "instruments"']
+                return ['test-pkg >= 1.0.0, < 2.0.0; extra == "instruments"']
 
         dist = MockDistribution()
 
@@ -73,7 +74,7 @@ class TestDependencyConflicts(TestBase):
         self.assertTrue(isinstance(conflict, DependencyConflict))
         self.assertEqual(
             str(conflict),
-            'This instrumentation only instruments "test-pkg~=1.0; extra == "instruments"", but no installed version was found, so nothing can be instrumented.',
+            'This instrumentation only instruments "test-pkg>=1.0.0,<2.0.0; extra == "instruments"", but no installed version was found, so nothing can be instrumented.',
         )
 
     def test_get_dist_dependency_conflicts_requires_none(self):
@@ -105,8 +106,8 @@ class TestDependencyConflicts(TestBase):
             @property
             def requires(self):
                 return [
-                    'foo ~= 1.0; extra == "instruments-any"',
-                    'bar ~= 1.0; extra == "instruments-any"',
+                    'foo >= 1.0.0, < 2.0.0; extra == "instruments-any"',
+                    'bar >= 1.0.0, < 2.0.0; extra == "instruments-any"',
                 ]
 
         dist = MockDistribution()
@@ -134,8 +135,8 @@ class TestDependencyConflicts(TestBase):
             @property
             def requires(self):
                 return [
-                    'foo ~= 1.0; extra == "instruments-any"',
-                    'bar ~= 1.0; extra == "instruments-any"',
+                    'foo >= 1.0.0, < 2.0.0; extra == "instruments-any"',
+                    'bar >= 1.0.0, < 2.0.0; extra == "instruments-any"',
                 ]
 
         dist = MockDistribution()
@@ -147,7 +148,7 @@ class TestDependencyConflicts(TestBase):
         self.assertTrue(isinstance(conflict, DependencyConflict))
         self.assertEqual(
             str(conflict),
-            """This instrumentation requires any of "foo~=1.0; extra == "instruments-any", bar~=1.0; extra == "instruments-any"", but none are installed, so nothing can be instrumented.""",
+            """This instrumentation requires any of "foo>=1.0.0,<2.0.0; extra == "instruments-any", bar>=1.0.0,<2.0.0; extra == "instruments-any"", but none are installed, so nothing can be instrumented.""",
         )
 
     # Tests when both "and" and "either" dependencies are specified and both pass.
@@ -164,9 +165,9 @@ class TestDependencyConflicts(TestBase):
             def requires(self):
                 # This indicates the instrumentation requires (foo and (bar or baz)))
                 return [
-                    'foo ~= 1.0; extra == "instruments"',
-                    'bar ~= 2.0; extra == "instruments-any"',
-                    'baz ~= 3.0; extra == "instruments-any"',
+                    'foo >= 1.0.0, < 2.0.0; extra == "instruments"',
+                    'bar >= 2.0.0, < 3.0.0; extra == "instruments-any"',
+                    'baz >= 3.0.0, < 4.0.0; extra == "instruments-any"',
                 ]
 
         dist = MockDistribution()
@@ -198,9 +199,9 @@ class TestDependencyConflicts(TestBase):
             def requires(self):
                 # This indicates the instrumentation requires (foo and (bar or baz)))
                 return [
-                    'foo ~= 1.0; extra == "instruments"',
-                    'bar ~= 2.0; extra == "instruments-any"',
-                    'baz ~= 3.0; extra == "instruments-any"',
+                    'foo >= 1.0.0, < 2.0.0; extra == "instruments"',
+                    'bar >= 2.0.0, < 3.0.0; extra == "instruments-any"',
+                    'baz >= 3.0.0, < 4.0.0; extra == "instruments-any"',
                 ]
 
         dist = MockDistribution()
@@ -220,7 +221,7 @@ class TestDependencyConflicts(TestBase):
         self.assertTrue(isinstance(conflict, DependencyConflict))
         self.assertEqual(
             str(conflict),
-            'This instrumentation only instruments "foo~=1.0; extra == "instruments"", but no installed version was found, so nothing can be instrumented.',
+            'This instrumentation only instruments "foo>=1.0.0,<2.0.0; extra == "instruments"", but no installed version was found, so nothing can be instrumented.',
         )
 
     # Tests when both "and" and "either" dependencies are specified but the "either" dependencies fail to resolve.
@@ -237,9 +238,9 @@ class TestDependencyConflicts(TestBase):
             def requires(self):
                 # This indicates the instrumentation requires (foo and (bar or baz)))
                 return [
-                    'foo ~= 1.0; extra == "instruments"',
-                    'bar ~= 2.0; extra == "instruments-any"',
-                    'baz ~= 3.0; extra == "instruments-any"',
+                    'foo >= 1.0.0, < 2.0.0; extra == "instruments"',
+                    'bar >= 2.0.0, < 3.0.0; extra == "instruments-any"',
+                    'baz >= 3.0.0, < 4.0.0; extra == "instruments-any"',
                 ]
 
         dist = MockDistribution()
@@ -259,7 +260,7 @@ class TestDependencyConflicts(TestBase):
         self.assertTrue(isinstance(conflict, DependencyConflict))
         self.assertEqual(
             str(conflict),
-            """This instrumentation requires any of "bar~=2.0; extra == "instruments-any", baz~=3.0; extra == "instruments-any"", but none are installed, so nothing can be instrumented.""",
+            """This instrumentation requires any of "bar>=2.0.0,<3.0.0; extra == "instruments-any", baz>=3.0.0,<4.0.0; extra == "instruments-any"", but none are installed, so nothing can be instrumented.""",
         )
 
     def test_dependency_conflict_format_message(self):

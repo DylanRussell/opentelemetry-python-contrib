@@ -2790,7 +2790,7 @@ instruments = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiohttp", marker = "extra == 'instruments'", specifier = "~=3.0" },
+    { name = "aiohttp", marker = "extra == 'instruments'", specifier = ">=3.0.0,<4.0.0" },
     { name = "opentelemetry-api", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-api&branch=main" },
     { name = "opentelemetry-instrumentation", editable = "opentelemetry-instrumentation" },
     { name = "opentelemetry-semantic-conventions", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-semantic-conventions&branch=main" },
@@ -2817,7 +2817,7 @@ instruments = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiohttp", marker = "extra == 'instruments'", specifier = "~=3.0" },
+    { name = "aiohttp", marker = "extra == 'instruments'", specifier = ">=3.0.0,<4.0.0" },
     { name = "opentelemetry-api", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-api&branch=main" },
     { name = "opentelemetry-instrumentation", editable = "opentelemetry-instrumentation" },
     { name = "opentelemetry-semantic-conventions", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-semantic-conventions&branch=main" },
@@ -2895,7 +2895,7 @@ instruments = [
 [package.metadata]
 requires-dist = [
     { name = "asgiref", specifier = "~=3.0" },
-    { name = "asgiref", marker = "extra == 'instruments'", specifier = "~=3.0" },
+    { name = "asgiref", marker = "extra == 'instruments'", specifier = ">=3.0.0,<4.0.0" },
     { name = "opentelemetry-api", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-api&branch=main" },
     { name = "opentelemetry-instrumentation", editable = "opentelemetry-instrumentation" },
     { name = "opentelemetry-semantic-conventions", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-semantic-conventions&branch=main" },
@@ -2922,7 +2922,7 @@ instruments = [
 
 [package.metadata]
 requires-dist = [
-    { name = "asyncclick", marker = "extra == 'instruments'", specifier = "~=8.0" },
+    { name = "asyncclick", marker = "extra == 'instruments'", specifier = ">=8.0.0,<9.0.0" },
     { name = "opentelemetry-api", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-api&branch=main" },
     { name = "opentelemetry-instrumentation", editable = "opentelemetry-instrumentation" },
     { name = "opentelemetry-semantic-conventions", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-semantic-conventions&branch=main" },
@@ -3007,7 +3007,7 @@ instruments = [
 
 [package.metadata]
 requires-dist = [
-    { name = "boto3", marker = "extra == 'instruments'", specifier = "~=1.0" },
+    { name = "boto3", marker = "extra == 'instruments'", specifier = ">=1.0.0,<2.0.0" },
     { name = "opentelemetry-api", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-api&branch=main" },
     { name = "opentelemetry-instrumentation", editable = "opentelemetry-instrumentation" },
     { name = "opentelemetry-semantic-conventions", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-semantic-conventions&branch=main" },
@@ -3035,7 +3035,7 @@ instruments-any = [
 [package.metadata]
 requires-dist = [
     { name = "aiobotocore", marker = "extra == 'instruments-any'", specifier = ">=2.0,<4.0" },
-    { name = "botocore", marker = "extra == 'instruments-any'", specifier = "~=1.0" },
+    { name = "botocore", marker = "extra == 'instruments-any'", specifier = ">=1.0.0,<2.0.0" },
     { name = "opentelemetry-api", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-api&branch=main" },
     { name = "opentelemetry-instrumentation", editable = "opentelemetry-instrumentation" },
     { name = "opentelemetry-propagator-aws-xray", editable = "propagator/opentelemetry-propagator-aws-xray" },
@@ -3062,11 +3062,11 @@ instruments-any = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cassandra-driver", marker = "extra == 'instruments-any'", specifier = "~=3.25" },
+    { name = "cassandra-driver", marker = "extra == 'instruments-any'", specifier = ">=3.25.0,<4.0.0" },
     { name = "opentelemetry-api", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-api&branch=main" },
     { name = "opentelemetry-instrumentation", editable = "opentelemetry-instrumentation" },
     { name = "opentelemetry-semantic-conventions", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-semantic-conventions&branch=main" },
-    { name = "scylla-driver", marker = "extra == 'instruments-any'", specifier = "~=3.25" },
+    { name = "scylla-driver", marker = "extra == 'instruments-any'", specifier = ">=3.25.0,<4.0.0" },
     { name = "wrapt", specifier = ">=1.0.0,<3.0.0" },
 ]
 provides-extras = ["instruments", "instruments-any"]
@@ -3257,7 +3257,7 @@ instruments = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastapi", marker = "extra == 'instruments'", specifier = "~=0.92" },
+    { name = "fastapi", marker = "extra == 'instruments'", specifier = ">=0.92.0,<1.0.0" },
     { name = "opentelemetry-api", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-api&branch=main" },
     { name = "opentelemetry-instrumentation", editable = "opentelemetry-instrumentation" },
     { name = "opentelemetry-instrumentation-asgi", editable = "instrumentation/opentelemetry-instrumentation-asgi" },
@@ -3578,8 +3578,8 @@ requires-dist = [
     { name = "opentelemetry-api", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-api&branch=main" },
     { name = "opentelemetry-instrumentation", editable = "opentelemetry-instrumentation" },
     { name = "opentelemetry-instrumentation-dbapi", editable = "instrumentation/opentelemetry-instrumentation-dbapi" },
-    { name = "psycopg2", marker = "extra == 'instruments-any'", specifier = ">=2.7.3.1" },
-    { name = "psycopg2-binary", marker = "extra == 'instruments-any'", specifier = ">=2.7.3.1" },
+    { name = "psycopg2", marker = "extra == 'instruments-any'", specifier = ">=2.7.3" },
+    { name = "psycopg2-binary", marker = "extra == 'instruments-any'", specifier = ">=2.7.3" },
 ]
 provides-extras = ["instruments", "instruments-any"]
 
@@ -3777,7 +3777,7 @@ requires-dist = [
     { name = "opentelemetry-instrumentation", editable = "opentelemetry-instrumentation" },
     { name = "opentelemetry-semantic-conventions", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-semantic-conventions&branch=main" },
     { name = "opentelemetry-util-http", editable = "util/opentelemetry-util-http" },
-    { name = "requests", marker = "extra == 'instruments'", specifier = "~=2.0" },
+    { name = "requests", marker = "extra == 'instruments'", specifier = ">=2.0.0,<3.0.0" },
 ]
 provides-extras = ["instruments"]
 
@@ -4032,7 +4032,7 @@ requires-dist = [
     { name = "opentelemetry-api", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-api&branch=main" },
     { name = "opentelemetry-instrumentation", editable = "opentelemetry-instrumentation" },
     { name = "opentelemetry-semantic-conventions", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-semantic-conventions&branch=main" },
-    { name = "valkey", marker = "extra == 'instruments'", specifier = "~=6.0" },
+    { name = "valkey", marker = "extra == 'instruments'", specifier = ">=6.0.0,<7.0.0" },
     { name = "wrapt", specifier = ">=1.0.0,<3.0.0" },
 ]
 provides-extras = ["instruments"]

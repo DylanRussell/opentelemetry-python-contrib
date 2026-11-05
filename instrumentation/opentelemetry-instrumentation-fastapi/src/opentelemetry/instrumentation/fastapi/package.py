@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-_instruments = ("fastapi ~= 0.92",)
+_instruments = ("fastapi >= 0.92.0, < 1.0.0",)
 
 _supports_metrics = True
 
